@@ -98,7 +98,7 @@ class GaussMethod(Matrix):
             
             factor = valor_actual / pivote
             nueva_fila = []
-            for i in range(self.columns):
+            for i in range(self.columnas):
                 nuevo_valor = self.matriz[fila][i] - factor * self.matriz[col][i]
                 '''Si el valor es cercano a 0, se deja exactamente en 0'''
                 if isclose(nuevo_valor, 0, abs_tol=self.tolerance):
