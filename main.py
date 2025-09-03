@@ -1,11 +1,11 @@
 from models.Matrix import Matrix
 from utils.display import mostrar_sistema_ecuaciones
-from utils.gauss_jordan import gauss_jordan
+from models.GaussJordan import gauss_jordan
 
 def main():
     matriz_lista = Matrix.make_matrix(3, 4)
     matriz = Matrix(matriz_lista)   
-     
+
     print("\n")
     print(matriz)
     
