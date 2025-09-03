@@ -4,16 +4,8 @@ class SistemaLineal:
         # (última columna = término independiente)
         self.matriz = [fila[:] for fila in matriz_aumentada]
 
-    # -------------------------------
-    # TUS FUNCIONES (con comentarios)
-    # -------------------------------
     def imprimir_matriz(self, paso, operacion):
-        """
-        Crea una representación string de la matriz en un formato legible.
-        :param paso: número del paso actual en el proceso de eliminación
-        :param operacion: descripción de la operación realizada
-        :return: string que representa el estado actual de la matriz
-        """
+        
         # Encabezado: muestra el número de paso y la operación elemental aplicada
         texto = f"Paso {paso} ({operacion}):\n"
         # Recorremos cada fila y la mostramos con 2 decimales para seguir la evolución de la matriz
@@ -42,13 +34,13 @@ class SistemaLineal:
             if fila_actual >= filas:
                 break  # Si ya usamos todas las filas posibles para pivotes, terminamos
 
-            # 1) Pivoteo parcial: elegimos como pivote el valor con mayor |·| en esta columna
+            #Pivoteo parcial: elegimos como pivote el valor con mayor |·| en esta columna
             max_row = max(range(fila_actual, filas), key=lambda i: abs(self.matriz[i][col]))
             if abs(self.matriz[max_row][col]) < 1e-10:
                 # Si toda la columna (desde fila_actual hacia abajo) es ~0, no sirve para pivotear
                 continue
 
-            # 2) Si el mejor pivote no está en la fila_actual, intercambiamos filas
+            #Si el mejor pivote no está en la fila_actual, intercambiamos filas
             if fila_actual != max_row:
                 self.matriz[fila_actual], self.matriz[max_row] = self.matriz[max_row], self.matriz[fila_actual]
                 resultado += self.imprimir_matriz(paso, f"Intercambio f{fila_actual + 1} <-> f{max_row + 1}")
@@ -56,13 +48,13 @@ class SistemaLineal:
 
             pivote = self.matriz[fila_actual][col]  # Valor del pivote
 
-            # 3) Normalizamos la fila del pivote para que el pivote sea exactamente 1
+            #Normalizamos la fila del pivote para que el pivote sea exactamente 1
             if abs(pivote) > 1e-10:
                 self.matriz[fila_actual] = [elemento / pivote for elemento in self.matriz[fila_actual]]
                 resultado += self.imprimir_matriz(paso, f"f{fila_actual + 1} -> (1/{pivote:.2f}) * f{fila_actual + 1}")
                 paso += 1
 
-            # 4) Eliminamos el resto de la columna (hacemos 0 en todas las otras filas)
+            #Eliminamos el resto de la columna (hacemos 0 en todas las otras filas)
             for i in range(filas):
                 if i != fila_actual:
                     factor = self.matriz[i][col]
@@ -77,7 +69,7 @@ class SistemaLineal:
             # Avanzamos de fila para buscar el siguiente pivote en la siguiente columna
             fila_actual += 1
 
-        # 5) Con la matriz ya reducida por filas, interpretamos la (las) solución(es)
+        #Con la matriz ya reducida por filas, interpretamos la (las) solución(es)
         resultado += self.interpretar_resultado()
         return resultado
 
@@ -94,7 +86,7 @@ class SistemaLineal:
         soluciones_numericas = {}  # Valores numéricos cuando no dependen de libres
         columnas_pivote = []       # Para mostrar qué columnas tuvieron pivote (1-based)
 
-        # (1) Detectar columnas pivote buscando un 1 aislado en cada columna
+        #Detectar columnas pivote buscando un 1 aislado en cada columna
         for j in range(m):
             for i in range(n):
                 if abs(self.matriz[i][j] - 1) < 1e-10 and all(
@@ -103,7 +95,7 @@ class SistemaLineal:
                     columnas_pivote.append(j + 1)
                     break
 
-        # (2) Buscar filas del tipo [0 0 ... 0 | c] con c != 0 → inconsistente
+        #Buscar filas del tipo [0 0 ... 0 | c] con c != 0 → inconsistente
         fila_inconsistente = [
             i for i, fila in enumerate(self.matriz)
             if all(abs(val) < 1e-10 for val in fila[:-1]) and abs(fila[-1]) > 1e-10
@@ -111,7 +103,7 @@ class SistemaLineal:
         # Marcador de inconsistencia (si existe, el sistema no tiene solución)
         inconsistente_var = set(f"x{i + 1}" for i in fila_inconsistente)
 
-        # (3) Construir expresiones de cada variable x_j
+        #Construir expresiones de cada variable x_j
         for j in range(m):
             var_name = f"x{j + 1}"
             if var_name in inconsistente_var:
@@ -158,13 +150,13 @@ class SistemaLineal:
                 if not terminos:
                     soluciones_numericas[var_name] = constante
 
-        # (4) Volcado ordenado de x1, x2, ..., xm
+        #Volcado ordenado de x1, x2, ..., xm
         for i in range(m):
             var_name = f"x{i + 1}"
             if var_name in soluciones:
                 resultado += f"{soluciones[var_name]}\n"
 
-        # (5) Diagnóstico final del sistema
+        #Diagnóstico final del sistema
         if inconsistente_var:
             resultado += "\nEl sistema es inconsistente y no tiene soluciones.\n"
         elif any(pivote == -1 for pivote in pivotes):
@@ -176,13 +168,11 @@ class SistemaLineal:
             else:
                 resultado += "\nLa solución es única.\n"
 
-        # (6) Información complementaria: cuáles columnas fueron pivote
+        #Información complementaria: cuáles columnas fueron pivote
         resultado += f"\nLas columnas pivote son: {', '.join(map(str, columnas_pivote))}.\n"
         return resultado
 
-    # ---------------------------------------
-    # Entrada por teclado (flujo interactivo)
-    # ---------------------------------------
+
     @staticmethod
     def leer_matriz_desde_teclado():
         """
@@ -195,8 +185,8 @@ class SistemaLineal:
         # Leemos m y n con validación básica
         while True:
             try:
-                m = int(input("Número de ecuaciones (filas): ").strip())
-                n = int(input("Número de incógnitas (columnas): ").strip())
+                m = int(input("Número de filas: ").strip())
+                n = int(input("Número de columnas: ").strip())
                 if m <= 0 or n <= 0:
                     print("Por favor, ingresa valores positivos.")
                     continue
@@ -230,13 +220,10 @@ class SistemaLineal:
         Flujo completo: leer matriz, ejecutar eliminación gaussiana e imprimir pasos y conclusión.
         """
         sistema = SistemaLineal.leer_matriz_desde_teclado()
-        print("\n=== Resolviendo por Eliminación Gaussiana (con pasos) ===")
+        print("\n===Resolviendo por Eliminación Gaussiana (con pasos)===")
         print(sistema.eliminacion_gaussiana())
 
 
-# -------------------
-# Punto de entrada
-# -------------------
 if __name__ == "__main__":
     # Ejecuta el flujo interactivo de consola
     SistemaLineal.resolver_desde_teclado()
