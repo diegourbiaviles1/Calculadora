@@ -41,11 +41,3 @@ class Matrix():
             formatted_rows = " ".join(f"{item:<{max_width}}" for item in row)
             lines.append(formatted_rows)
         return "\n".join(lines)
-    
-def main():
-    matriz_lista = Matrix.make_matrix(3, 3)
-    matriz = Matrix(matriz_lista)
-    print(matriz)
-    
-if __name__ == "__main__":
-    main()
