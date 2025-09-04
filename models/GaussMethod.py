@@ -139,6 +139,10 @@ class GaussMethod(Matrix):
                     det=(self.determinante if self.filas == self.columnas else None), tag="no_pivot_for_reduction")
             return
         
+        log_step(self.frame,
+            f"Pivote usado para reducción: A[{col+1},{col+1}] = {pivote:.2f}", self.matriz,
+            det=(self.determinante if self.filas == self.columnas else None), tag="pivot_use")
+        
         for fila in range(col + 1, self.filas):
             valor_actual = self.matriz[fila][col]
             if isclose(valor_actual, 0.0, abs_tol=self.tolerance):
@@ -206,6 +210,10 @@ class GaussMethod(Matrix):
             log_step(self.frame, f"No hay pivote en la columna {col+1}.", self.matriz,
                     det=(self.determinante if self.filas == self.columnas else None), tag="no_pivot")
             return
+        
+        pivot_val = self.matriz[row_option][col_option]
+        log_step(self.frame, f"Pivote elegido: A[{row_option+1},{col_option+1}] = {pivot_val:.2f}",
+            self.matriz, det=(self.determinante if self.filas == self.columnas else None), tag="pivot")
         
         # Intercambiar columna
         if col_option != col:
