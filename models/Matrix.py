@@ -12,7 +12,7 @@ class Matrix():
             while True:
                 try:
                     print(f"Ingrese {cntColums} valores para la fila {fila+1}: ")
-                    inputs = input(" - ")
+                    inputs = input(" -> ")
                     ''' Validar las entradas usando valid_values '''
                     if not all(char in valid_values for char in inputs):
                         raise ValueError("La entrada es inválida, ingrese los valores correctamente...")
