@@ -98,3 +98,41 @@ def print_equation(matriz: list[list], vector: list[float]) -> str:
         lines.append(line)
         
     return "\n".join(lines)
+
+def print_summary(result: Optional[Any]):
+    if result is None:
+        print("No hay resultado para mostrar.")
+        return
+
+    print("============ SUMMARY ============")
+    status = result.get('status', 'unknown')
+    print(f"Status: {status}")
+
+    basic = result.get('basic_vars', [])
+    free = result.get('free_vars', [])
+
+    def vars_to_str(indices):
+        if not indices:
+            return "None"
+        return ", ".join(f"x{num_to_sub(i+1)}" for i in indices)
+
+    print(f"Variables básicas: {vars_to_str(basic)}")
+    print(f"Variables libres: {vars_to_str(free)}")
+
+    sol = result.get('solution')
+    if sol is not None:
+        # vector compacto formateado
+        sol_formatted = [format_number(v) for v in sol]
+        print(f"Solución particular: [{', '.join(sol_formatted)}]")
+
+        # detalle variable por variable
+        print("\nValores por variable:")
+        for idx, val in enumerate(sol):
+            var_name = f"x{num_to_sub(idx + 1)}"
+            print(f"  {var_name} = {format_number(val)}")
+
+        if status == 'infinite':
+            print("\nNota: la solución mostrada es una solución particular (variables libres = 0).")
+    else:
+        print("Solución particular: None (sistema inconsistente)")
+    print("=================================")
