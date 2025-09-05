@@ -2,7 +2,8 @@ from models.Matrix import Matrix
 from math import isclose
 import copy
 from typing import Any, Dict, List, Optional
-from utils.printMethods import log_step, print_frame, run_and_print
+from utils.printMethods import log_step
+from utils.EquationFunctions import format_number
 
 """
 Metodo de Gauss con:
@@ -48,13 +49,13 @@ class GaussMethod(Matrix):
         # Validar Matrices singulares por lineas o columnas 0
         for row in range(self.filas):
             if all(self.matriz[row][i]==0 for i in range(self.columnas)):
-                log_step(self.frame, f"Fila {row+1} son 0, su determinante es 0 (Matriz Singular)", self.matriz, det=0.0, tag="singular")
+                log_step(self.frame, f"Fila {row+1} son 0, su determinante es 0 (Matriz Singular)", self.matriz, det=0, tag="singular")
                 #self.frame[f"Fila {row+1} son 0, su determinante es 0 (Matriz Singular)"] = (copy.deepcopy(self.matriz),0)
                 return True
             
         for col in range(self.columnas):
             if all(self.matriz[i][col]==0 for i in range(self.filas)):
-                log_step(self.frame, f"Columna {col+1} son 0, su determinante es 0 (Matriz Singular)", self.matriz, det=0.0, tag="singular")
+                log_step(self.frame, f"Columna {col+1} son 0, su determinante es 0 (Matriz Singular)", self.matriz, det=0, tag="singular")
                 #self.frame[f"Columna {col+1} son 0, su determinante es 0 (Matriz Singular)"] = (copy.deepcopy(self.matriz),0)
                 return True
             
@@ -62,7 +63,7 @@ class GaussMethod(Matrix):
         for i in range(self.filas):
             for j in range(i+1, self.filas):
                 if self.matriz[i] == self.matriz[j]:
-                    log_step(self.frame, f"Filas {i+1} y {j+1} son iguales, su determinmante es 0 (Matriz Singular)", self.matriz, det=0.0, tag="singular")
+                    log_step(self.frame, f"Filas {i+1} y {j+1} son iguales, su determinmante es 0 (Matriz Singular)", self.matriz, det=0, tag="singular")
                     #self.frame[f"Filas {i+1} y {j+1} son iguales, su determinmante es 0 (Matriz Singular)"] = (copy.deepcopy(self.matriz),0)
                     return True
                 
@@ -71,7 +72,7 @@ class GaussMethod(Matrix):
                 col_i = [self.matriz[k][i] for k in range(self.filas)]
                 col_j = [self.matriz[k][j] for k in range(self.filas)]
                 if col_i == col_j:
-                    log_step(self.frame, f"Columnas {i+1} y {j+1} son iguales, su determinante es 0 (Matriz Singular)", self.matriz, det=0.0, tag="singular")
+                    log_step(self.frame, f"Columnas {i+1} y {j+1} son iguales, su determinante es 0 (Matriz Singular)", self.matriz, det=0, tag="singular")
                     #self.frame[f"Columnas {i+1} y {j+1} son iguales, su determinante es 0 (Matriz Singular)"] = (copy.deepcopy(self.matriz),0)
                     return True
         
@@ -87,10 +88,10 @@ class GaussMethod(Matrix):
             diag_product *= self.matriz[i][i]
             
         final_dect = self.determinante * diag_product
-        details = f"Determinante = ({self.determinante})" + "".join(f"({self.matriz[i][i]:.1f})" for i in range(limit))
-        log_step(self.frame, details, self.matriz, det=float(final_dect), tag="det")
+        details = f"Determinante = ({format_number(self.determinante)})" + "".join(f"({format_number(self.matriz[i][i])})" for i in range(limit))
+        log_step(self.frame, details, self.matriz, det=format_number(float(final_dect)), tag="det")
         
-    # ----------------------
+    # ---------------------
     # OPERACIONES ELEMENTALES
     # ----------------------
     def swipe_rows(self, fila_a, fila_b) -> None:
@@ -107,7 +108,7 @@ class GaussMethod(Matrix):
         # Guardar la matriz
         det = f"Fila {fila_a + 1} <--> Fila {fila_b + 1}"
         log_step(self.frame, f"Fila {fila_a+1} <-> Fila {fila_b+1}", self.matriz,
-                det=(self.determinante if self.filas == self.columnas else None), tag="swap_rows")
+                det=(format_number(self.determinante) if self.filas == self.columnas else None), tag="swap_rows")
 
         
     def swipe_col(self, col_a, col_b) -> None:
@@ -126,7 +127,7 @@ class GaussMethod(Matrix):
         #Guardar matrriz
         det = f"Columna {col_a + 1} <--> Columna {col_b + 1}"
         log_step(self.frame, f"Columna {col_a+1} <-> Columna {col_b+1}", self.matriz,
-                det=(self.determinante if self.filas == self.columnas else None), tag="swap_cols")
+                det=(format_number(self.determinante) if self.filas == self.columnas else None), tag="swap_cols")
     
     
     def triangular_reduction(self, col):
@@ -136,12 +137,12 @@ class GaussMethod(Matrix):
         pivote = self.matriz[col][col]
         if isclose(pivote, 0.0, abs_tol=self.tolerance):
             log_step(self.frame, f"Pivote ≈ 0 en columna {col+1}, no se reduce", self.matriz,
-                    det=(self.determinante if self.filas == self.columnas else None), tag="no_pivot_for_reduction")
+                    det=(format_number(self.determinante) if self.filas == self.columnas else None), tag="no_pivot_for_reduction")
             return
         
         log_step(self.frame,
-            f"Pivote usado para reducción: A[{col+1},{col+1}] = {pivote:.2f}", self.matriz,
-            det=(self.determinante if self.filas == self.columnas else None), tag="pivot_use")
+            f"Pivote usado para reducción: A[{col+1},{col+1}] = {format_number(pivote)}", self.matriz,
+            det=(format_number(self.determinante) if self.filas == self.columnas else None), tag="pivot_use")
         
         for fila in range(col + 1, self.filas):
             valor_actual = self.matriz[fila][col]
@@ -160,7 +161,7 @@ class GaussMethod(Matrix):
             
             # Guardar el registro
             log_step(self.frame,f"F{fila+1} -> F{fila+1} - {factor:.2f}*F{col+1}",
-                    self.matriz, det=(self.determinante if self.filas == self.columnas else None),
+                    self.matriz, det=(format_number(self.determinante) if self.filas == self.columnas else None),
                     tag="elim")
     
     def pivote(self, col:int):
@@ -208,12 +209,12 @@ class GaussMethod(Matrix):
         # Si no hay pivote
         if row_option == -1:
             log_step(self.frame, f"No hay pivote en la columna {col+1}.", self.matriz,
-                    det=(self.determinante if self.filas == self.columnas else None), tag="no_pivot")
+                    det=(format_number(self.determinante) if self.filas == self.columnas else None), tag="no_pivot")
             return
         
         pivot_val = self.matriz[row_option][col_option]
-        log_step(self.frame, f"Pivote elegido: A[{row_option+1},{col_option+1}] = {pivot_val:.2f}",
-            self.matriz, det=(self.determinante if self.filas == self.columnas else None), tag="pivot")
+        log_step(self.frame, f"Pivote elegido: A[{row_option+1},{col_option+1}] = {format_number(pivot_val)}",
+            self.matriz, det=(format_number(self.determinante) if self.filas == self.columnas else None), tag="pivot")
         
         # Intercambiar columna
         if col_option != col:

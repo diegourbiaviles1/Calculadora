@@ -6,7 +6,7 @@ from utils.printMethods import print_frame, print_equation
 
 def main():
     #matriz, vector = Matrix.make_equation(3, 3)
-    matriz_lista = Matrix.make_matrix(3, 4)
+    matriz_lista = Matrix.make_matrix(3, 3)
     matriz = Matrix(matriz_lista)
     gauss = GaussMethod(matriz_lista)
     gauss.gauss_method()

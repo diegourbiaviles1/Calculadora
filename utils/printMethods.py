@@ -68,7 +68,7 @@ def run_and_print(executor: Optional[Callable[[], Frame]] = None, frame: Optiona
         if executor is None:
             raise ValueError("Debe proporcionar executor o frame")
         frame = executor()
-    print("\n=== Proceso de Eliminación Gaussiana ===\n")
+    print("\n=== Proceso de Solucion de Sistema ===\n")
     print_frame(frame, decimals=decimals, show_det=show_det)
     
 __all__ = ["log_step", "format_matrix", "print_frame", "run_and_print"]
