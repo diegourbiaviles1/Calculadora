@@ -160,7 +160,7 @@ class GaussMethod(Matrix):
             self.matriz[fila] = nueva_fila
             
             # Guardar el registro
-            log_step(self.frame,f"F{fila+1} -> F{fila+1} - {factor:.2f}*F{col+1}",
+            log_step(self.frame,f"F{fila+1} -> F{fila+1} - {format_number(factor)}*F{col+1}",
                     self.matriz, det=(format_number(self.determinante) if self.filas == self.columnas else None),
                     tag="elim")
     
