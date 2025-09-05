@@ -9,7 +9,7 @@ dict[step_str] -> {"matrix": list[list[float]], "det": Optional[float], "tag": O
 from __future__ import annotations
 import copy 
 from typing import Any, Callable, Dict, List, Optional
-
+from utils.EquationFunctions import num_to_sub, format_number, parse_fraction
 Frame = Dict[str, Dict[str, Any]]
 
 def log_step(frame: Frame, step: str, matrix_state: List[List[float]], det: Optional[float] = None, tag: Optional[str] = None) -> None:
@@ -23,21 +23,17 @@ def log_step(frame: Frame, step: str, matrix_state: List[List[float]], det: Opti
     frame[step] = {"matrix": copy.deepcopy(matrix_state), "det": det, "tag":tag}
     
     
-def _to_str_cell(value: Any, decimals: int=3) -> str:
+def _to_str_cell(value: Any) -> str:
     try:
-        if isinstance(value, float):
-            return f"{round(value, decimals)}"
-        if isinstance(value, int):
-            return str(value)
-        return f"{round(float(value), decimals)}"
+        return format_number(float(value))
     except Exception:
         return str(value)
     
-def format_matrix(matrix: List[List[float]], decimals: int=3) -> str:
+def format_matrix(matrix: List[List[float]]) -> str:
     if not matrix:
         return ""
     
-    str_rows: List[List[str]] = [[_to_str_cell(v, decimals) for v in row] for row in matrix]
+    str_rows: List[List[str]] = [[_to_str_cell(v) for v in row] for row in matrix]
     cols = len(str_rows[0])
     col_widths = [0] * cols
     for i in str_rows:
@@ -50,17 +46,17 @@ def format_matrix(matrix: List[List[float]], decimals: int=3) -> str:
         lines.append("  ".join(padded))
     return "\n".join(lines)
 
-def print_frame(frame: Frame, decimals: int=3, show_det: bool = True, sep: str = "-"*40)->None:
+def print_frame(frame: Frame, show_det: bool = True, sep: str = "-"*40)->None:
     for step, payload in frame.items():
         matrix_state = payload.get("matrix")
         det_val = payload.get("det")
         tag = payload.get("tag")
         print(step)
         if matrix_state:
-            print(format_matrix(matrix_state, decimals=decimals))
+            print(format_matrix(matrix_state)) 
         if show_det and det_val is not None:
             try:
-                print("Determinante:", round(float(det_val), decimals))
+                print("Determinante:", parse_fraction(float(det_val)))
             except Exception:
                 print("Determinante:", det_val)
         if tag:
@@ -76,3 +72,37 @@ def run_and_print(executor: Optional[Callable[[], Frame]] = None, frame: Optiona
     print_frame(frame, decimals=decimals, show_det=show_det)
     
 __all__ = ["log_step", "format_matrix", "print_frame", "run_and_print"]
+
+def print_equation(matriz: list[list], vector: list[float]) -> str:
+    filas = len(matriz)
+    columnas = len(matriz[0])
+    lines = []
+    for i in range(filas):
+        terms = []
+        for j in range(columnas):
+            coef = matriz[i][j]
+            if abs(coef) < 1e-12:
+                continue
+            
+            var = f"x{num_to_sub(j+1)}"
+            coef_str = format_number(abs(coef))
+            
+            if coef == 1:
+                term = f"{var}"
+            elif coef == -1:
+                term = f"-{var}"
+            else:
+                term =f"{coef_str}{var}"
+                
+            if terms:
+                if coef > 0:
+                    term = f"+ {term}"
+                else:
+                    term = f"- {coef_str}{var}" if abs(coef) != 1 else f"-{var}"
+            terms.append(term)
+            
+        rhs = format_number(vector[i])
+        line = " ".join(terms) + f" = {rhs}"
+        lines.append(line)
+        
+    return "\n".join(lines)
