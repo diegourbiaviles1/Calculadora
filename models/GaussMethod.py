@@ -1,9 +1,11 @@
 from models.Matrix import Matrix
 from math import isclose
 import copy
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from utils.printMethods import log_step
-from utils.EquationFunctions import format_number
+from utils.EquationFunctions import format_number, num_to_sub
+from models.system_solver.GaussSolver import analyze_argumented, solve_from_upper
+
 
 """
 Metodo de Gauss con:
@@ -13,11 +15,26 @@ Metodo de Gauss con:
     - Métodos de impresión del proceso: print_process() y run_and_print().
 """
 class GaussMethod(Matrix):
-    def __init__(self, matriz: list[list]) -> None:
-        super().__init__(copy.deepcopy(matriz))
-        self.determinante = 1
+    def __init__(self, matriz: List[List[float]], b: Optional[List[float]]) -> None:
+        if b is not None:
+            if len(b) != len(matriz):
+                raise ValueError("El vector b ebe tener misma cantidad de filas que la matriz")
+            aug = [list(map(float, row)) + [float(bi)] for row, bi in zip(matriz, b)]
+            super().__init__(copy.deepcopy(aug))
+            self.is_augmented = True
+            self.A = copy.deepcopy(matriz)
+            self.b = copy.deepcopy(b)
+                    
+        else:
+            super().__init__(copy.deepcopy(matriz))
+            self.is_augmented = False
+            self.A = copy.deepcopy(matriz)
+            self.b = None
+            
+        self.determinante:float = 1.0
         self.tolerance = 1e-13 # Notacion cientifica
         self.frame: Dict[str, Dict[str, Any]] = {}
+        self.pivots: List[Tuple[int,int]] = []
         self.analize: Dict[str, Any] = {}
     
     # ----------------------
@@ -38,6 +55,108 @@ class GaussMethod(Matrix):
             if self.filas == self.columnas:
                 self.determinant_result()
         return self.frame
+
+    # ----------------------
+    # ELIMINACION HACIA ADELANTE PARA MATRIZ AUMENTADA
+    # ----------------------
+    def fordward_elimination_aug(self) -> Tuple[List[List[float]], List[Tuple[int,int]]]:
+        """Orquesta la eliminación hacia adelante sobre la matriz aumentada self.matriz.
+        - Usa pivot parcial por filas (no intercambia columnas).
+        - Reutiliza triangular_reduction(col) para eliminar por debajo del pivote.
+        - Registra pasos en self.frame mediante log_step.
+        - Al final actualiza self.matriz, self.pivots y dimensiones.
+        """
+        if not getattr(self, "is_augmented", False):
+            raise RuntimeError("La instancia no contiene una matriz aumentada")
+        
+        aug = self.matriz
+        m = len(aug)
+        if m == 0:
+            return aug, []
+        
+        n_plus_1 = len(aug[0])
+        n = n_plus_1 - 1
+        row = 0
+        pivots: List[Tuple[int,int]] = []
+        log_step(self.frame, "Matriz aumentada inicial", aug, det=None, tag="start")
+        
+        for col in range(n):
+            if row >= m:break
+            
+            # Usar pivote parcial
+            sel = max(range(row,m),key=lambda r: abs(aug[r][col]))
+            if isclose(aug[sel][col], 0.0, abs_tol=self.tolerance):
+                log_step(self.frame, f"No hay pivote significativo en la columna {col+1}",aug,det=None, tag="no_pivot")
+                continue
+            
+            # Swap filas si es necesario
+            if sel != row:
+                self.swipe_rows(row, sel)
+                
+            # Registrar pivote
+            pivots.append((row, col))
+            pivot_val = aug[row][col]
+            log_step(self.frame, f"Pivote en A[{row+1},{col+1}] = {format_number(pivot_val)}", aug, det=None, tag="pivot")
+            
+            ''' Eliminación hacia abajo reutilizando triangular_reduction
+                triangular_reduction asume que el pivote está en (col,col); aquí el pivote está en (row,col)
+                por lo que ajustamos: si row != col, intercambiamos mentalmente las filas para usarla
+                pero triangular_reduction fue diseñada para pivot en (col,col). Para evitar reescribirla,
+                llamamos manualmente a la lógica de eliminación local aquí.'''
+                
+            for r in range(row +1, m):
+                if isclose(aug[r][col],0.0,abs_tol=self.tolerance):
+                    continue
+                factor = aug[r][col] / pivot_val
+                for c in range(col, n+1):
+                    aug[r][c] -= factor * aug[row][c]
+                    if isclose(aug[r][c],0.0,abs_tol=self.tolerance):
+                        aug[r][c] =0.0
+                log_step(self.frame, f"F{r+1} -> F{r+1} - ({format_number(factor)})*F{row+1}", aug, det=None, tag="elim")
+            row +=1
+        
+        self.matriz = aug
+        self.filas = len(aug)
+        self.columnas = len(aug[0]) if aug else 0
+        self.pivots = pivots
+        
+        log_step(self.frame, "Matriz aumentada triangular superior (U)", self.matriz, det=None, tag="upper")
+        return self.matriz, pivots
+
+    # ----------------------
+    # solve_and_log: ejecuta eliminación, resuelve y registra resumen (llamen a dio)
+    # ----------------------
+    def solve_and_log(self) -> Dict[str, Any]:
+        """
+        Registra un resumen final en self.frame, devolviendo el dict 
+        resultado de solve_from_upper
+        """
+        if not getattr(self, "is_augmented", False):
+            raise RuntimeError("La instancia no contiene una matriz aumentada")
+        
+        self.fordward_elimination_aug()
+        result = solve_from_upper(self.matriz, pivots=self.pivots)
+        
+        status = result.get('status')
+        sol = result.get('solution')
+        basic = result.get('basic_vars',[])
+        free = result.get('free_vars',[])
+        
+        def idxs_to_vars(idxs):
+            if not idxs: return "None"
+            return ", ".join(f"x{num_to_sub(i+1)}" for i in idxs)
+        
+        log_step(self.frame, f"Resumen: Tipo de solucion = {status}", self.matriz, det=None, tag="summary")
+        if status == 'inconsistent':
+            log_step(self.frame, "Sistema inconsistente: no existe solución", self.matriz, det=None, tag="inconsistent")
+        else:
+        # mostrar solución particular (si existe)
+            if sol is not None:
+                sol_str = [format_number(val) for val in sol]
+                log_step(self.frame, f"Solución particular (libres=0): [{', '.join(sol_str)}]", self.matriz, det=None, tag="solution")
+            log_step(self.frame, f"Variables básicas: {idxs_to_vars(basic)} | Variables libres: {idxs_to_vars(free)}", self.matriz, det=None, tag="vars")
+        return result
+
 
     # ----------------------
     # CHEQUEOS DE SINGULARIDAD (solo para cuadradas)
@@ -78,6 +197,10 @@ class GaussMethod(Matrix):
         
         return False
     
+    
+    # ----------------------
+    # DETERMINANTE 
+    # ----------------------
     def determinant_result(self):
         if self.filas != self.columnas:
             return 
@@ -90,7 +213,8 @@ class GaussMethod(Matrix):
         final_dect = self.determinante * diag_product
         details = f"Determinante = ({format_number(self.determinante)})" + "".join(f"({format_number(self.matriz[i][i])})" for i in range(limit))
         log_step(self.frame, details, self.matriz, det=format_number(float(final_dect)), tag="det")
-        
+
+
     # ---------------------
     # OPERACIONES ELEMENTALES
     # ----------------------
