@@ -62,16 +62,8 @@ def print_frame(frame: Frame, show_det: bool = True, sep: str = "-"*40)->None:
         if tag:
             print(f"(tag: {tag})")
         print(sep)
-        
-def run_and_print(executor: Optional[Callable[[], Frame]] = None, frame: Optional[Frame] = None, decimals:int=3, show_det:bool=True) ->None:
-    if frame is None:
-        if executor is None:
-            raise ValueError("Debe proporcionar executor o frame")
-        frame = executor()
-    print("\n=== Proceso de Solucion de Sistema ===\n")
-    print_frame(frame, decimals=decimals, show_det=show_det)
     
-__all__ = ["log_step", "format_matrix", "print_frame", "run_and_print"]
+__all__ = ["log_step", "format_matrix", "print_frame"]
 
 def print_equation(matriz: list[list], vector: list[float]) -> str:
     filas = len(matriz)
