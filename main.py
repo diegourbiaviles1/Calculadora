@@ -3,7 +3,6 @@ from sistema_lineal import SistemaLineal
 from utilidad import leer_dimensiones, leer_matriz, leer_vector, leer_lista_vectores
 from algebra_vector import verificar_propiedades, combinacion_lineal, ecuacion_vectorial, resolver_AX_igual_B
 
-# ---------- Programa 1: usar tu Gauss-Jordan tal cual ----------
 def op0_resolver_sistema():
     print("\n--- Resolver sistema lineal (Gauss-Jordan con pasos) ---")
     m, n = leer_dimensiones("Número de ecuaciones m y número de variables n: ")
@@ -16,7 +15,6 @@ def op0_resolver_sistema():
     print("\n=== Resolviendo ===\n")
     print(sistema.eliminacion_gaussiana())
 
-# ---------- Programa 3 ----------
 def op1_propiedades():
     print("\n--- 1) Propiedades algebraicas en R^n ---")
     n = int(input("¿Tamaño de los vectores n?: ").strip())
@@ -25,10 +23,23 @@ def op1_propiedades():
     w = leer_vector(n, "w: ")
     a = float(input("Escalar a: ").strip())
     b = float(input("Escalar b: ").strip())
+
+    # Mostrar operaciones solicitadas
+    from utilidad import vec_suma, escalar_por_vector
+    print("\nOperaciones explícitas:")
+    print("v + u =", vec_suma(v, u))
+    print("a · u =", escalar_por_vector(a, u))
+    print("b · v =", escalar_por_vector(b, v))
+    print("-v    =", escalar_por_vector(-1.0, v))
+    print("0⃗    =", [0.0]*n)
+
+    # Verificación de propiedades
+    from algebra_vector import verificar_propiedades
     res = verificar_propiedades(v, u, w, a, b)
-    print("\nResultados:")
+    print("\nVerificación de propiedades:")
     for k, ok in res.items():
         print(f"  {k}: {'Se cumple' if ok else 'NO se cumple'}")
+
 
 def op2_combinacion_lineal():
     print("\n--- 2) Combinación lineal de vectores ---")
