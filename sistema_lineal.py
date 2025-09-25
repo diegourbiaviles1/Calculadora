@@ -1,218 +1,112 @@
+# sistema_lineal.py
+from typing import List, Dict, Any
+from utilidad import copy_mat
 
 class SistemaLineal:
-    def __init__(self, matriz_aumentada, tol=1e-10, decimales=2):
-        # Copia por valor (lista de listas)
-        self.matriz = [fila[:] for fila in matriz_aumentada]
+    """
+    Resuelve sistemas lineales por Gauss-Jordan (RREF).
+    Mantiene un registro de 'pasos' legibles para explicar el procedimiento.
+    """
+    def __init__(self, matriz_aumentada: List[List[float]], tol: float = 1e-10, decimales: int = 4):
+        if not matriz_aumentada or not matriz_aumentada[0]:
+            raise ValueError("Matriz aumentada vacía.")
+        self.matriz = copy_mat(matriz_aumentada)  # se modifica in-place durante el proceso
         self.tol = float(tol)
         self.decimales = int(decimales)
 
-    def _is_cero(self, x):
+    # ---------- utilidades internas ----------
+    def _is_cero(self, x: float) -> bool:
         return abs(x) < self.tol
 
-    def _fmt(self, x):
-        # Evita -0.00 y muestra enteros sin .00
+    def _fmt(self, x: float) -> str:
         if self._is_cero(x):
             x = 0.0
         return f"{int(x)}" if float(x).is_integer() else f"{x:.{self.decimales}f}"
 
-    def _snapshot(self, paso, operacion):
-        # String del estado actual de la matriz
-        filas_txt = [ "  ".join(self._fmt(v) for v in fila) for fila in self.matriz ]
-        return f"Paso {paso} ({operacion}):\n" + "\n".join(filas_txt) + "\n"
+    def _snapshot(self, titulo: str) -> str:
+        filas = len(self.matriz)
+        cols = len(self.matriz[0])
+        lines = [titulo, "-" * max(12, len(titulo))]
+        for i in range(filas):
+            izq = " ".join(self._fmt(self.matriz[i][j]) for j in range(cols - 1))
+            der = self._fmt(self.matriz[i][cols - 1])
+            lines.append(f"[ {izq} | {der} ]")
+        return "\n".join(lines)
 
-    def eliminacion_gaussiana(self):
-        """
-        Aplica Gauss-Jordan (reduce completamente) y devuelve:
-        - Traza de pasos
-        - Interpretación de soluciones
-        """
-        if not self.matriz or not self.matriz[0]:
-            return "Matriz no válida."
+    # ---------- algoritmo principal ----------
+    def gauss_jordan(self) -> Dict[str, Any]:
+        n = len(self.matriz)            # filas (ecuaciones)
+        m = len(self.matriz[0]) - 1     # variables (columnas de A)
+        pasos: List[str] = [self._snapshot("Inicial")]
 
-        filas, columnas = len(self.matriz), len(self.matriz[0])
-        ult_col = columnas - 1
-
-        paso = 1
-        pasos = []
-
-        fila_actual = 0
-        for col in range(ult_col):
-            if fila_actual >= filas:
+        fila = 0
+        for col in range(m):
+            if fila >= n:
                 break
 
-            # Pivoteo parcial: fila con mayor |coef|
-            max_row = max(range(fila_actual, filas), key=lambda i: abs(self.matriz[i][col]))
-            if self._is_cero(self.matriz[max_row][col]):
-                # Columna sin pivote útil
+            # pivoteo parcial: escoger fila con mayor |coef|
+            p = max(range(fila, n), key=lambda r: abs(self.matriz[r][col]))
+            if self._is_cero(self.matriz[p][col]):
+                # columna sin pivote útil → se queda como libre
                 continue
 
-            # Intercambio si el pivote no está ya en fila_actual
-            if max_row != fila_actual:
-                self.matriz[fila_actual], self.matriz[max_row] = self.matriz[max_row], self.matriz[fila_actual]
-                pasos.append(self._snapshot(paso, f"Intercambio f{fila_actual+1} <-> f{max_row+1}"))
-                paso += 1
+            if p != fila:
+                self.matriz[fila], self.matriz[p] = self.matriz[p], self.matriz[fila]
+                pasos.append(self._snapshot(f"Permutar filas {fila+1} ↔ {p+1}"))
 
-            # Normalizar fila pivote
-            pivote = self.matriz[fila_actual][col]
-            if not self._is_cero(pivote) and pivote != 1.0:
-                inv = 1.0 / pivote
-                fila_piv = self.matriz[fila_actual]
-                for k in range(col, columnas):
-                    fila_piv[k] *= inv
-                pasos.append(self._snapshot(paso, f"f{fila_actual+1} -> (1/{self._fmt(pivote)}) * f{fila_actual+1}"))
-                paso += 1
+            piv = self.matriz[fila][col]
 
-            # Eliminar por encima y por debajo (Gauss-Jordan)
-            for i in range(filas):
-                if i == fila_actual:
+            # normalizar fila del pivote
+            for j in range(m + 1):
+                self.matriz[fila][j] /= piv
+            pasos.append(self._snapshot(f"Normalizar fila {fila+1} (÷ {self._fmt(piv)})"))
+
+            # anular el resto en la columna del pivote
+            for r in range(n):
+                if r == fila:
                     continue
-                factor = self.matriz[i][col]
+                factor = self.matriz[r][col]
                 if self._is_cero(factor):
                     continue
-                fila_i = self.matriz[i]
-                fila_piv = self.matriz[fila_actual]
-                for k in range(col, columnas):
-                    fila_i[k] -= factor * fila_piv[k]
-                pasos.append(self._snapshot(paso, f"f{i+1} -> f{i+1} - ({self._fmt(factor)}) * f{fila_actual+1}"))
-                paso += 1
+                for j in range(m + 1):
+                    self.matriz[r][j] -= factor * self.matriz[fila][j]
+                pasos.append(self._snapshot(f"F{r+1} = F{r+1} - ({self._fmt(factor)})·F{fila+1}"))
 
-            fila_actual += 1
+            fila += 1
 
-        # Interpretación
-        interpretacion = self.interpretar_resultado()
-        pasos.append(interpretacion)
-        return "\n".join(pasos)
-
-    def interpretar_resultado(self):
-        """
-        Informa: inconsistencia / únicas / infinitas soluciones.
-        Da ecuaciones xj = ...
-        """
-        n = len(self.matriz)
-        m = len(self.matriz[0]) - 1
-        A = self.matriz
-
-        # Detectar inconsistencia: [0 ... 0 | c] con c != 0
+        # --------- Clasificación del sistema ----------
+        # Inconsistente: fila con [0 ... 0 | c] y c != 0
         for i in range(n):
-            if all(self._is_cero(A[i][j]) for j in range(m)) and not self._is_cero(A[i][m]):
-                return "Solución del sistema:\n\nEl sistema es inconsistente y no tiene soluciones.\n"
+            if all(self._is_cero(self.matriz[i][j]) for j in range(m)) and not self._is_cero(self.matriz[i][m]):
+                return {"tipo": "inconsistente", "pasos": pasos, "rref": self.matriz}
 
-        # Encontrar columnas pivote (buscando 1 "limpio" y ceros en la columna)
-        pivote_en_col = [-1] * m   # fila del pivote por columna o -1
+        # Rango y columnas pivote
+        rank = 0
         columnas_pivote = []
         for j in range(m):
-            fila_1 = -1
-            ok = True
+            fila_con_uno = None
+            ok_col = True
             for i in range(n):
-                if abs(A[i][j] - 1.0) < self.tol:
-                    if fila_1 == -1:
-                        fila_1 = i
+                x = self.matriz[i][j]
+                if abs(x - 1.0) < self.tol:
+                    if fila_con_uno is None:
+                        fila_con_uno = i
                     else:
-                        ok = False  # dos unos en misma columna
-                        break
-                elif not self._is_cero(A[i][j]):
-                    ok = False
-                    break
-            if ok and fila_1 != -1:
-                pivote_en_col[j] = fila_1
-                columnas_pivote.append(j+1)
+                        ok_col = False
+                elif not self._is_cero(x):
+                    ok_col = False
+            if ok_col and fila_con_uno is not None:
+                rank += 1
+                columnas_pivote.append(j)
 
-        # Variables libres: columnas sin pivote
-        libres = [j for j in range(m) if pivote_en_col[j] == -1]
+        # Única solución: rank = m
+        if rank == m:
+            x = [0.0] * m
+            for j in range(m):
+                i = next(i for i in range(n) if abs(self.matriz[i][j] - 1.0) < self.tol)
+                x[j] = self.matriz[i][m]
+            return {"tipo": "unica", "x": x, "pasos": pasos, "rref": self.matriz}
 
-        # Construir ecuaciones x_j = c + sum(coef * x_libre)
-        lineas = ["Solución del sistema:"]
-        soluciones_numericas = {}
-        for j in range(m):
-            var = f"x{j+1}"
-            if pivote_en_col[j] == -1:
-                lineas.append(f"{var} es libre")
-                continue
-
-            fila = pivote_en_col[j]
-            c = A[fila][m]
-            partes = []
-            # constante
-            const_str = self._fmt(c)
-            if not self._is_cero(c):
-                partes.append(const_str)
-
-            # términos por variables libres (signo cambia al pasar a la derecha)
-            for k in libres:
-                coef = -A[fila][k]
-                if self._is_cero(coef):
-                    continue
-                s = self._fmt(coef) + f"x{k+1}"
-                # Coloca signo explícito para concatenar
-                if coef > 0 and partes:
-                    s = "+ " + s
-                partes.append(s)
-
-            if not partes:
-                expr = "0"
-                soluciones_numericas[var] = 0.0
-            else:
-                expr = " ".join(partes).lstrip("+ ").strip()
-                # si no depende de libres, guarda valor numérico
-                if not libres:
-                    soluciones_numericas[var] = c
-
-            lineas.append(f"{var} = {expr}")
-
-        # Diagnóstico final
-        if libres:
-            lineas.append("\nHay infinitas soluciones debido a variables libres.")
-        else:
-            # Única solución (todas con pivote)
-            if len(soluciones_numericas) == m and all(self._is_cero(v) for v in soluciones_numericas.values()):
-                lineas.append("\nSolución trivial.")
-            else:
-                lineas.append("\nLa solución es única.")
-
-        # Info extra: columnas pivote
-        if columnas_pivote:
-            lineas.append(f"\nLas columnas pivote son: {', '.join(map(str, columnas_pivote))}.")
-        else:
-            lineas.append("\nNo hay columnas pivote.")
-
-        return "\n".join(lineas)
-
-    # ---------- IO de consola (sin append, robusto) ----------
-    @staticmethod
-    def leer_matriz_desde_teclado():
-        while True:
-            try:
-                m = int(input("Número de filas: ").strip())
-                n = int(input("Número de columnas: ").strip())
-                if m <= 0 or n <= 0:
-                    print("Por favor, ingresa valores positivos.")
-                    continue
-                break
-            except ValueError:
-                print("Entrada no válida. Intenta de nuevo.")
-
-        print("\nIntroduce cada fila de la MATRIZ AUMENTADA con", n + 1, "valores separados por espacio.")
-        print("Ejemplo (n=3):  2 -1 3 5   ← equivale a [2, -1, 3 | 5]\n")
-
-        matriz = []
-        for i in range(m):
-            partes = input(f"Fila {i+1}: ").replace("|", " ").split()
-            if len(partes) != n + 1:
-                raise ValueError(f"La fila {i+1} no tiene {n+1} números.")
-            try:
-                fila = [float(x) for x in partes]
-            except ValueError:
-                raise ValueError(f"Entrada inválida en fila {i+1}.")
-            matriz.append(fila)
-
-        return SistemaLineal(matriz)
-
-    @staticmethod
-    def resolver_desde_teclado():
-        sistema = SistemaLineal.leer_matriz_desde_teclado()
-        print("\n===Resolviendo por Eliminación Gaussiana (con pasos)===")
-        print(sistema.eliminacion_gaussiana())
-
-
-if __name__ == "__main__":
-    SistemaLineal.resolver_desde_teclado()
+        # Infinitas soluciones: variables libres = columnas no pivote
+        libres = [j for j in range(m) if j not in columnas_pivote]
+        return {"tipo": "infinitas", "libres": libres, "pasos": pasos, "rref": self.matriz}
