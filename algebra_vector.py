@@ -59,6 +59,62 @@ def combinacion_lineal(vectores: List[List[float]], coef: List[float]) -> List[f
             res[i] += float(c) * float(v[i])
     return res
 
+def combinacion_lineal_explicada(vectores: List[List[float]], coef: List[float], dec: int = 4) -> Dict[str, Any]:
+    """
+    Explica el procedimiento de la combinación lineal y muestra las operaciones de filas
+    y el resultado tanto en detalle como en formato simple.
+    """
+    if len(vectores) != len(coef):
+        raise ValueError("Tamaños incompatibles entre vectores y coeficientes.")
+    if not vectores:
+        return {"resultado": [], "texto": "No se proporcionaron vectores."}
+
+    n = len(vectores[0])  # Dimensión de los vectores
+    for v in vectores:
+        if len(v) != n:
+            raise ValueError("Vectores de distinta dimensión.")
+
+    k = len(vectores)  # Cantidad de vectores
+    res = [0] * n  # Vector de resultados
+
+    # Crear el texto para el procedimiento
+    txt = []
+    txt.append("--- Combinación lineal ---")
+    txt.append(f"Cantidad de vectores k: {k}")
+    txt.append(f"Dimensión n: {n}\n")
+
+    # Mostrar vectores v1, v2, ..., vk
+    for j, vj in enumerate(vectores, start=1):
+        txt.append(f"v{j} =\n" + format_col_vector(vj, dec))
+
+    # Mostrar coeficientes
+    txt.append("\nCoeficientes:")
+    txt.append("c = [ " + "  ".join(str(c) for c in coef) + " ]^T")
+
+    # Fórmula simbólica
+    partes = [f"c{j}·v{j}" for j in range(1, k+1)]
+    txt.append("\nFórmula de la combinación:")
+    txt.append("b = " + " + ".join(partes))
+
+    # Cálculo componente a componente con operaciones
+    txt.append("\nCálculo componente a componente:")
+    for i in range(n):
+        sumandos = [f"{coef[j]}·{vectores[j][i]}" for j in range(k)]
+        res[i] = sum([coef[j] * vectores[j][i] for j in range(k)])  # Realizamos el cálculo correctamente
+        txt.append(f"b{i+1} = " + " + ".join(sumandos) + f" = {res[i]}")
+
+    # Resultado
+    txt.append("\nResultado:")
+    txt.append(format_col_vector(res, dec))
+
+    # Resultado simple (sin pasos detallados)
+    resultado_simple = f"Como lista: {res}"
+
+    return {"resultado": res, "texto": "\n".join(txt), "resultado_simple": resultado_simple}
+
+
+
+
 
 # 3) ¿b está en span{v1,...,vk}? -> A c = b con A=[v1 ... vk]
 def ecuacion_vectorial(vectores: List[List[float]], b: List[float]) -> Dict[str, Any]:

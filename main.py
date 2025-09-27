@@ -2,7 +2,7 @@
 
 from utilidad import leer_matriz, leer_vector, leer_lista_vectores, leer_dimensiones
 from algebra_vector import (
-    verificar_propiedades, combinacion_lineal, ecuacion_vectorial, resolver_AX_igual_B,
+   verificar_propiedades, combinacion_lineal_explicada, ecuacion_vectorial, resolver_AX_igual_B,
     verificar_distributiva_matriz, sistema_a_forma_matricial, multiplicacion_matriz_vector_explicada
 )
 from sistema_lineal import SistemaLineal
@@ -35,14 +35,50 @@ def op1_propiedades():
     res = verificar_propiedades(v,u,w,a,b)
     for k, val in res.items(): print(f"{k}: {val}")
 
-def op2_combinacion():
+def op_combinacion_lineal_y_gauss_jordan():
+    # 1. Entrada de vectores y coeficientes
     print("\n--- Combinación lineal ---")
     k = int(input("Cantidad de vectores k: "))
     n = int(input("Dimensión n: "))
-    V = leer_lista_vectores(k, n)
-    coef = leer_vector(k, "Coeficientes (c1..ck): ")
-    r = combinacion_lineal(V, coef)
-    print("Resultado:", r)
+    V = leer_lista_vectores(k, n)  # Función para leer los vectores
+    coef = leer_vector(k, "Coeficientes (c1..ck): ")  # Función para leer los coeficientes
+
+    # 2. Calcular la combinación lineal
+    print("\nCalculando combinación lineal...")
+    out_combinacion = combinacion_lineal_explicada(V, coef)
+    
+    # Mostrar el resultado de la combinación lineal
+    print("\n--- Resultado de la combinación lineal ---")
+    print(out_combinacion["texto"])  # Muestra todo el paso a paso
+    print("\nComo lista:", out_combinacion["resultado_simple"])  # Muestra solo el resultado final
+
+    # 3. Resolver el sistema usando Gauss-Jordan
+    print("\n--- Resolviendo por Gauss-Jordan ---")
+    # Convertimos el resultado de la combinación lineal en una matriz aumentada para Gauss-Jordan
+    matriz_aumentada = [V[0] + [out_combinacion["resultado"][0]]]
+    for i in range(1, len(V)):
+        matriz_aumentada.append(V[i] + [out_combinacion["resultado"][i]])
+
+    # Llamamos a Gauss-Jordan
+    sl = SistemaLineal(matriz_aumentada)
+    resultado_gauss_jordan = sl.gauss_jordan()
+
+    # Mostrar el proceso de Gauss-Jordan
+    print("\n--- Proceso de Gauss-Jordan ---")
+    for paso in resultado_gauss_jordan["pasos"]:
+        print(paso)
+
+    # Mostrar el resultado final de Gauss-Jordan
+    print("\nResultado de Gauss-Jordan:")
+    if resultado_gauss_jordan["tipo"] == "unica":
+        print("x =", resultado_gauss_jordan["x"])
+    else:
+        print("El sistema tiene soluciones infinitas o es inconsistente.")
+    
+    # Mostrar las columnas pivote
+    print("\nColumnas pivote:", resultado_gauss_jordan["pivotes"])
+
+
 
 def op3_ecuacion_vectorial():
     print("\n--- Ecuación vectorial (¿b en span{v1..vk}?) ---")
@@ -132,7 +168,7 @@ def menu_vectores():
         op = input("Opción: ").strip().lower()
         if op == "1": op1_propiedades()
         elif op == "2": op5_distributiva()
-        elif op == "3": op2_combinacion()
+        elif op == "3": op_combinacion_lineal_y_gauss_jordan()
         elif op == "4": op3_ecuacion_vectorial()
         elif op == "b": break
         else: print("Opción inválida.")
