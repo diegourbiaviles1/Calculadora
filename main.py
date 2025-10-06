@@ -1,4 +1,5 @@
 # main.py
+from multiprocessing.util import info
 from utilidad import (
     leer_matriz, leer_vector, leer_lista_vectores, leer_dimensiones, mat_from_columns
 )
@@ -155,20 +156,12 @@ def opP4_sistema_h_oh():
     b = leer_vector(m, "Vector b: ")
     info = analizar_sistema(A, b)
 
-    print("\n=== Conclusion ===")
-    print("Tipo de sistema:", "Homogéneo (Ax = 0)" if info["homogeneo"] else "No homogéneo (Ax=b)")
-    print("El sistema es :", "Consistente" if info["consistente"] else "Inconsistente")
-    tipo = info["tipo"]
-    print("Tipo de solución:", "Única" if tipo=="unica" else ("Infinitas" if tipo=="infinitas" else "Ninguna"))
-
-    if info["homogeneo"] and info["consistente"]:
-        print("¿Solo solución trivial?:", "Sí" if info["solo_trivial"] else "No (hay soluciones no triviales)")
-
     print("\n=== Pasos (Gauss-Jordan) ===")
     for p in info["pasos"]:
         print(p, "\n")
-
-    print("\n=== Solución en forma paramétrica ===")
+    
+    print(f"\nTipo de sistema: {'Homogéneo (Ax = 0)' if info['homogeneo'] else 'No homogéneo (Ax = b)'}")
+    print("\n=== Solución General (forma paramétrica) ===")
     print(info["salida_parametrica"])
 
     print("\n=== Conclusión ===")
@@ -227,7 +220,7 @@ def op_matriz_vector():
 
 def menu():
     while True:
-        print("\n=== Calculadora de Álgebra Lineal ===")
+        print("\n=== Calculadora ===")
         print("1) Sistemas de ecuaciones (resolver, Ax=b, forma matricial)")
         print("2) Operaciones con vectores (propiedades, distributiva, combinación, ecuación vectorial)")
         print("3) Multiplicación matriz·vector (explicada)")

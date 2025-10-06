@@ -148,7 +148,7 @@ class SistemaLineal:
                 i = next(i for i in range(n)
                          if (self.matriz[i][j] == 1 if isinstance(self.matriz[i][j], Fraction)
                              else abs(float(self.matriz[i][j]) - 1.0) < self.tol))
-                coef = self.matriz[i][ell]
+                coef = self.matrizd[i][ell]
                 if not self._is_cero(coef):
                     vec[j] = -float(coef)
             base_nulo.append(vec)
@@ -164,96 +164,71 @@ class SistemaLineal:
         }
 
 # -------- Formato de solución paramétrica (para imprimir como en la foto) --------
-def formatear_solucion_parametrica(
-    out: Dict[str, Any],
-    nombres_vars: Optional[list[str]] = None,
-    dec: int = DEFAULT_DEC,
-    fracciones: bool = True
-) -> str:
-    """
-    Genera texto en forma paramétrica a partir del resultado de gauss_jordan():
-    - Ecuaciones implícitas tipo: x_j + sum(c_ell * x_ell) = b
-    - Variables libres: x_ell = s_k
-    - Asignación explícita: x_j = b - sum(c_ell * s_k)
-    - Forma vectorial: x = x_part + Σ s_k·w_k (si x_part y base_nulo existen)
-
-    out debe contener: 'rref', 'pivotes' (1-indexed) y opcionalmente 'libres','x_part','base_nulo'.
-    """
+# --- dentro de formatear_solucion_parametrica ---
+def formatear_solucion_parametrica(out, nombres_vars=None, dec=DEFAULT_DEC, fracciones=True):
+    if out.get("tipo") == "inconsistente":
+        return "Sistema inconsistente: no existe forma paramétrica."
     if "rref" not in out or "pivotes" not in out:
         return "No hay datos suficientes para formar la solución paramétrica."
 
     R = out["rref"]
-    n = len(R)            # filas
-    m = len(R[0]) - 1     # variables
-    piv1 = out.get("pivotes", [])              # 1-indexed
-    piv0 = sorted([p - 1 for p in piv1])       # 0-indexed
+    n, m = len(R), len(R[0]) - 1
+    piv1 = out.get("pivotes", [])
+    piv0 = sorted([p - 1 for p in piv1])
     libres0 = sorted([j for j in range(m) if j not in piv0])
-    libres1 = [j + 1 for j in libres0]
 
-    # nombres de variables
     if not nombres_vars or len(nombres_vars) != m:
         nombres_vars = [f"x{j+1}" for j in range(m)]
 
-    # mapeo libre -> símbolo s_k
     s_names = [f"s{idx+1}" for idx in range(len(libres0))]
     libre_to_s = {ell: s_names[k] for k, ell in enumerate(libres0)}
 
     lineas = []
-    lineas.append("Solución general (forma paramétrica):\n")
+    lineas.append("Solución general (forma paramétrica):")
 
-    # 1) Ecuaciones implícitas tipo: xj + Σ c_ell x_ell = b
-    lineas.append("• Ecuaciones del RREF:")
-    for j in piv0:
-        # encontrar la fila con el 1 en la columna j
-        i = next(i for i in range(n) if (R[i][j] == 1) or (abs(float(R[i][j]) - 1.0) < 1e-12))
-        terms = [nombres_vars[j]]
-        for ell in libres0:
-            coef = float(R[i][ell])
-            if abs(coef) > 1e-12:
-                sgn = " + " if coef >= 0 else " - "
-                terms.append(f"{sgn}{fmt_number(abs(coef), dec, fracciones)}{nombres_vars[ell]}")
-        b = float(R[i][m])
-        eq = " ".join(terms) + f" = {fmt_number(b, dec, fracciones)}"
-        lineas.append("  " + eq)
-
-    # 2) Declaración de libres
-    lineas.append("\n• Variables libres:")
+    # libres
     if libres0:
         for idx, ell in enumerate(libres0):
             lineas.append(f"  {nombres_vars[ell]} = {s_names[idx]}")
     else:
-        lineas.append("  (no hay)")
+        lineas.append("  (no hay variables libres)")
 
-    # 3) Asignación explícita por variables (xj en función de s_k)
-    lineas.append("\n• Asignación paramétrica:")
+    # pivote = b - sum(coef*s)
     for j in piv0:
-        i = next(i for i in range(n) if (R[i][j] == 1) or (abs(float(R[i][j]) - 1.0) < 1e-12))
-        rhs_terms = [fmt_number(float(R[i][m]), dec, fracciones)]
+        i = next(i for i in range(n) if (R[i][j] == 1) or (abs(float(R[i][j]) - 1.0) < DEFAULT_EPS))
+        b_val = float(R[i][m])
+        rhs_terms = []
+        if abs(b_val) > DEFAULT_EPS:
+            rhs_terms.append(fmt_number(b_val, dec, fracciones))
         for ell in libres0:
             coef = float(R[i][ell])
-            if abs(coef) > 1e-12:
+            if abs(coef) > DEFAULT_EPS:
                 s = libre_to_s[ell]
                 sgn = " - " if coef >= 0 else " + "
                 rhs_terms.append(f"{sgn}{fmt_number(abs(coef), dec, fracciones)}{s}")
-        rhs = " ".join(rhs_terms)
+        rhs = " ".join(rhs_terms) if rhs_terms else "0"
         lineas.append(f"  {nombres_vars[j]} = {rhs}")
 
-    for ell in libres0:
-        lineas.append(f"  {nombres_vars[ell]} = {libre_to_s[ell]}")
-
-    # 4) Forma vectorial (si hay datos)
+    # forma vectorial + mensaje trivial/no trivial SOLO si existen x_part y base_nulo
     x_part = out.get("x_part")
     base_nulo = out.get("base_nulo")
     if x_part is not None and base_nulo is not None:
         lineas.append("\n• Forma vectorial:")
-        xp = "[" + "  ".join(fmt_number(float(x), dec, fracciones) for x in x_part) + "]^T"
+        xp = "[" + "  ".join(fmt_number(float(x), dec, fracciones) for x in x_part) + "]"
         if base_nulo:
             partes = []
             for k, vec in enumerate(base_nulo):
-                vtxt = "[" + "  ".join(fmt_number(float(x), dec, fracciones) for x in vec) + "]^T"
+                vtxt = "[" + "  ".join(fmt_number(float(x), dec, fracciones) for x in vec) + "]"
                 partes.append(f"{s_names[k]}·{vtxt}")
             lineas.append(f"  x = {xp}  +  " + "  +  ".join(partes))
         else:
             lineas.append(f"  x = {xp}")
+
+        # mensaje trivial/no trivial solo cuando corresponde
+        if all(abs(float(x)) < DEFAULT_EPS for x in x_part):
+            if base_nulo:
+                lineas.append("\nSoluciones no triviales: existen infinitas soluciones distintas de x = 0.")
+            else:
+                lineas.append("\nSolución trivial: solo x = 0.")
 
     return "\n".join(lineas)
