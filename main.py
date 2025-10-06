@@ -1,13 +1,15 @@
-# main.py (menú compacto)
-
-from utilidad import leer_matriz, leer_vector, leer_lista_vectores, leer_dimensiones
+# main.py
+from utilidad import (
+    leer_matriz, leer_vector, leer_lista_vectores, leer_dimensiones, mat_from_columns
+)
 from algebra_vector import (
    verificar_propiedades, combinacion_lineal_explicada, ecuacion_vectorial, resolver_AX_igual_B,
     verificar_distributiva_matriz, sistema_a_forma_matricial, multiplicacion_matriz_vector_explicada
 )
-from sistema_lineal import SistemaLineal
+from sistema_lineal import SistemaLineal, formatear_solucion_parametrica
+from homogeneo import analizar_sistema, analizar_dependencia
 
-# -------- Handlers existentes (re-uso) --------
+# -------- Handlers --------
 def op0_resolver_sistema():
     print("\n--- Resolver sistema lineal (Gauss-Jordan con pasos) ---")
     m, n = leer_dimensiones("Número de ecuaciones m y número de variables n: ")
@@ -16,13 +18,16 @@ def op0_resolver_sistema():
     sl = SistemaLineal(Ab, decimales=4)
     out = sl.gauss_jordan()
     print("\n=== Pasos ===")
-    for paso in out["pasos"]: print(paso, "\n")
+    for paso in out["pasos"]:
+        print(paso, "\n")
     if out["tipo"] == "unica":
         print("Solución única x =", out["x"])
     elif out["tipo"] == "infinitas":
         print("Infinitas soluciones. Variables libres en columnas:", out["libres"])
     else:
         print("Sistema inconsistente (sin solución).")
+    print()
+    print(formatear_solucion_parametrica(out, nombres_vars=None, dec=4, fracciones=True))
 
 def op1_propiedades():
     print("\n--- Propiedades en R^n ---")
@@ -32,53 +37,47 @@ def op1_propiedades():
     w = leer_vector(n, "w: ")
     a = float(input("Escalar a: "))
     b = float(input("Escalar b: "))
-    res = verificar_propiedades(v,u,w,a,b)
-    for k, val in res.items(): print(f"{k}: {val}")
+    res = verificar_propiedades(v, u, w, a, b)
+    for k, val in res.items():
+        print(f"{k}: {val}")
 
 def op_combinacion_lineal_y_gauss_jordan():
-    # 1. Entrada de vectores y coeficientes
     print("\n--- Combinación lineal ---")
     k = int(input("Cantidad de vectores k: "))
     n = int(input("Dimensión n: "))
-    V = leer_lista_vectores(k, n)  # Función para leer los vectores
-    coef = leer_vector(k, "Coeficientes (c1..ck): ")  # Función para leer los coeficientes
+    V = leer_lista_vectores(k, n)
+    coef = leer_vector(k, "Coeficientes (c1..ck): ")
 
-    # 2. Calcular la combinación lineal
     print("\nCalculando combinación lineal...")
     out_combinacion = combinacion_lineal_explicada(V, coef)
-    
-    # Mostrar el resultado de la combinación lineal
     print("\n--- Resultado de la combinación lineal ---")
-    print(out_combinacion["texto"])  # Muestra todo el paso a paso
-    print("\nComo lista:", out_combinacion["resultado_simple"])  # Muestra solo el resultado final
+    print(out_combinacion["texto"])
+    print("\nComo lista:", out_combinacion["resultado_simple"])
 
-    # 3. Resolver el sistema usando Gauss-Jordan
     print("\n--- Resolviendo por Gauss-Jordan ---")
-    # Convertimos el resultado de la combinación lineal en una matriz aumentada para Gauss-Jordan
-    matriz_aumentada = [V[0] + [out_combinacion["resultado"][0]]]
-    for i in range(1, len(V)):
-        matriz_aumentada.append(V[i] + [out_combinacion["resultado"][i]])
+    A = mat_from_columns(V)                       
+    b = out_combinacion["resultado"]              
+    matriz_aumentada = [A[i] + [b[i]] for i in range(n)]
 
-    # Llamamos a Gauss-Jordan
     sl = SistemaLineal(matriz_aumentada)
     resultado_gauss_jordan = sl.gauss_jordan()
 
-    # Mostrar el proceso de Gauss-Jordan
     print("\n--- Proceso de Gauss-Jordan ---")
     for paso in resultado_gauss_jordan["pasos"]:
         print(paso)
 
-    # Mostrar el resultado final de Gauss-Jordan
     print("\nResultado de Gauss-Jordan:")
     if resultado_gauss_jordan["tipo"] == "unica":
-        print("x =", resultado_gauss_jordan["x"])
+        print("c (coeficientes) =", resultado_gauss_jordan["x"])
+    elif resultado_gauss_jordan["tipo"] == "infinitas":
+        print("El sistema tiene infinitas soluciones.")
+        print("Columnas pivote:", resultado_gauss_jordan["pivotes"])
+        print("Variables libres (columnas):", resultado_gauss_jordan["libres"])
     else:
-        print("El sistema tiene soluciones infinitas o es inconsistente.")
-    
-    # Mostrar las columnas pivote
-    print("\nColumnas pivote:", resultado_gauss_jordan["pivotes"])
+        print("Sistema inconsistente (sin solución).")
 
-
+    print()
+    print(formatear_solucion_parametrica(resultado_gauss_jordan, nombres_vars=None, dec=4, fracciones=True))
 
 def op3_ecuacion_vectorial():
     print("\n--- Ecuación vectorial (¿b en span{v1..vk}?) ---")
@@ -87,9 +86,12 @@ def op3_ecuacion_vectorial():
     V = leer_lista_vectores(k, n)
     b = leer_vector(n, "b: ")
     out = ecuacion_vectorial(V, b)
-    for paso in out.get("reportes", []): print(paso, "\n")
+    for paso in out.get("reportes", []):
+        print(paso, "\n")
     tipo = out.get("tipo") or out.get("estado")
     print("Estado:", tipo)
+    print()
+    print(formatear_solucion_parametrica(out, nombres_vars=None, dec=4, fracciones=True))
 
 def op4_ax_igual_b():
     print("\n--- Ecuación matricial AX=B ---")
@@ -102,10 +104,13 @@ def op4_ax_igual_b():
     else:
         B = leer_vector(m, "Vector b: ")
     out = resolver_AX_igual_B(A, B)
-    for paso in out.get("reportes", []): print(paso, "\n")
+    for paso in out.get("reportes", []):
+        print(paso, "\n")
     if out.get("estado") == "ok":
-        if "x" in out: print("x =", out["x"])
-        if "X" in out: print("X =\n", out["X"])
+        if "x" in out:
+            print("x =", out["x"])
+        if "X" in out:
+            print("X =\n", out["X"])
     else:
         print("Estado:", out.get("estado"))
 
@@ -142,7 +147,51 @@ def op7_matriz_por_vector():
     out = multiplicacion_matriz_vector_explicada(A, v)
     print(out["texto"])
 
-# -------- Menús compactos --------
+# -------- Programa 4 --------
+def opP4_sistema_h_oh():
+    print("\n--- Programa 4: Sistema homogéneo / no homogéneo ---")
+    m, n = leer_dimensiones("Tamaño de A (m n): ")
+    A = leer_matriz(m, n, "Matriz A:")
+    b = leer_vector(m, "Vector b: ")
+    info = analizar_sistema(A, b)
+
+    print("\n=== Conclusion ===")
+    print("Tipo de sistema:", "Homogéneo (Ax = 0)" if info["homogeneo"] else "No homogéneo (Ax=b)")
+    print("El sistema es :", "Consistente" if info["consistente"] else "Inconsistente")
+    tipo = info["tipo"]
+    print("Tipo de solución:", "Única" if tipo=="unica" else ("Infinitas" if tipo=="infinitas" else "Ninguna"))
+
+    if info["homogeneo"] and info["consistente"]:
+        print("¿Solo solución trivial?:", "Sí" if info["solo_trivial"] else "No (hay soluciones no triviales)")
+
+    print("\n=== Pasos (Gauss-Jordan) ===")
+    for p in info["pasos"]:
+        print(p, "\n")
+
+    print("\n=== Solución en forma paramétrica ===")
+    print(info["salida_parametrica"])
+
+    print("\n=== Conclusión ===")
+    print(info["conclusion"])
+
+def opP4_dependencia():
+    print("\n--- Programa 4: Dependencia / Independencia lineal ---")
+    k = int(input("Cantidad de vectores k: "))
+    n = int(input("Dimensión n: "))
+    V = leer_lista_vectores(k, n)
+    info = analizar_dependencia(V)
+
+    print("\n=== Conclusion ===")
+    print(info["mensaje"])
+
+    print("\n=== Pasos (Gauss-Jordan sobre A c = 0) ===")
+    for p in info["pasos"]:
+        print(p, "\n")
+
+    print("\n=== Combinación paramétrica de coeficientes c ===")
+    print(info["salida_parametrica"])
+
+# -------- Menús --------
 def menu_sistemas():
     while True:
         print("\n--- Sistemas de ecuaciones ---")
@@ -174,7 +223,6 @@ def menu_vectores():
         else: print("Opción inválida.")
 
 def op_matriz_vector():
-    # opción directa sin submenú
     op7_matriz_por_vector()
 
 def menu():
@@ -183,6 +231,8 @@ def menu():
         print("1) Sistemas de ecuaciones (resolver, Ax=b, forma matricial)")
         print("2) Operaciones con vectores (propiedades, distributiva, combinación, ecuación vectorial)")
         print("3) Multiplicación matriz·vector (explicada)")
+        print("4) Sistema homogéneo / no homogéneo")
+        print("5) Dependencia / Independencia lineal")
         print("q) Salir")
         op = input("Opción: ").strip().lower()
 
@@ -192,6 +242,10 @@ def menu():
             menu_vectores()
         elif op == "3":
             op_matriz_vector()
+        elif op == "4":
+            opP4_sistema_h_oh()
+        elif op == "5":
+            opP4_dependencia()
         elif op == "q":
             break
         else:
