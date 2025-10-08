@@ -8,7 +8,13 @@ from algebra_vector import (
     verificar_distributiva_matriz, sistema_a_forma_matricial, multiplicacion_matriz_vector_explicada
 )
 from sistema_lineal import SistemaLineal, formatear_solucion_parametrica
-from homogeneo import analizar_sistema, analizar_dependencia
+from homogeneo import (
+    analizar_sistema,
+    analizar_dependencia,
+    resolver_sistema_homogeneo_y_no_homogeneo,
+    resolver_dependencia_lineal_con_homogeneo
+)
+
 
 def op0_resolver_sistema():
     print("\n--- Resolver sistema lineal (Gauss-Jordan con pasos) ---")
@@ -149,22 +155,40 @@ def op7_matriz_por_vector():
 
 # -------- Programa 4 --------
 def opP4_sistema_h_oh():
-    print("\n--- Programa 4: Sistema homogéneo / no homogéneo ---")
+    print("\n--- Programa 4: Sistema homogéneo / no homogéneo + Dependencia lineal ---")
     m, n = leer_dimensiones("Tamaño de A (m n): ")
     A = leer_matriz(m, n, "Matriz A:")
     b = leer_vector(m, "Vector b: ")
-    info = analizar_sistema(A, b)
 
-    print("\n=== Pasos (Gauss-Jordan) ===")
-    for p in info["pasos"]:
-        print(p, "\n")
-    
-    print(f"\nTipo de sistema: {'Homogéneo (Ax = 0)' if info['homogeneo'] else 'No homogéneo (Ax = b)'}")
-    print("\n=== Solución General (forma paramétrica) ===")
+    # ---------------------------
+    # Parte 1: Ax = b
+    # ---------------------------
+    info = resolver_sistema_homogeneo_y_no_homogeneo(A, b)
+
+    print("\n=== PASOS (Gauss-Jordan aplicado a Ax = b) ===")
+    for paso in info["pasos"]:
+        print(paso)
+
+    print("\n=== SOLUCIÓN GENERAL (forma paramétrica) ===")
     print(info["salida_parametrica"])
 
-    print("\n=== Conclusión ===")
+    print("\n=== CONCLUSIÓN DEL SISTEMA ===")
     print(info["conclusion"])
+
+    # ---------------------------
+    # Parte 2: A·c = 0 (dependencia)
+    # ---------------------------
+    info_dep = resolver_dependencia_lineal_con_homogeneo(A)
+
+    print("\n\n=== ANÁLISIS DE DEPENDENCIA LINEAL ===")
+    print(info_dep["dependencia"])
+
+    print("\n=== PASOS (Gauss-Jordan aplicado a A·c = 0) ===")
+    for paso in info_dep["pasos"]:
+        print(paso)
+
+    print("\n=== COMBINACIÓN LINEAL (forma paramétrica de los coeficientes c) ===")
+    print(info_dep["salida_parametrica"])
 
 def opP4_dependencia():
     print("\n--- Programa 4: Dependencia / Independencia lineal ---")
@@ -223,8 +247,7 @@ def menu():
         print("1) Sistemas de ecuaciones (resolver, Ax=b, forma matricial)")
         print("2) Operaciones con vectores (propiedades, distributiva, combinación, ecuación vectorial)")
         print("3) Multiplicación matriz·vector (explicada)")
-        print("4) Sistema homogéneo / no homogéneo")
-        print("5) Dependencia / Independencia lineal")
+        print("4) Sistema homogéneo / no homogéneo + Dependencia lineal")
         print("q) Salir")
         op = input("Opción: ").strip().lower()
 
@@ -236,8 +259,6 @@ def menu():
             op_matriz_vector()
         elif op == "4":
             opP4_sistema_h_oh()
-        elif op == "5":
-            opP4_dependencia()
         elif op == "q":
             break
         else:
