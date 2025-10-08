@@ -10,7 +10,6 @@ from algebra_vector import (
 from sistema_lineal import SistemaLineal, formatear_solucion_parametrica
 from homogeneo import analizar_sistema, analizar_dependencia
 
-# -------- Handlers --------
 def op0_resolver_sistema():
     print("\n--- Resolver sistema lineal (Gauss-Jordan con pasos) ---")
     m, n = leer_dimensiones("Número de ecuaciones m y número de variables n: ")
