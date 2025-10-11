@@ -1,26 +1,43 @@
-# programa4.py — Homogéneos / No homogéneos y Dependencia / Independencia
+# homogeneo.py — Homogéneos / No homogéneos y Dependencia / Independencia (robustecido)
 from __future__ import annotations
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sistema_lineal import SistemaLineal, formatear_solucion_parametrica
-from utilidad import mat_from_columns
-
+from utilidad import mat_from_columns, DEFAULT_EPS
 
 # -----------------------------------------------------------
-# Función auxiliar: detectar si un vector es nulo (Ax = 0)
+# Utilidades internas
 # -----------------------------------------------------------
-def _es_vector_cero(b: List[float], eps: float = 1e-10) -> bool:
-    return all(abs(x) < eps for x in b)
+def _es_vector_cero(b: List[float], eps: float = DEFAULT_EPS) -> bool:
+    return all(abs(float(x)) < eps for x in b)
 
+def _validar_matriz_y_vector(A: List[List[float]], b: Optional[List[float]] = None) -> None:
+    if not A or not A[0]:
+        raise ValueError("Matriz A vacía.")
+    n_rows = len(A)
+    n_cols = len(A[0])
+    for i, fila in enumerate(A, 1):
+        if len(fila) != n_cols:
+            raise ValueError(f"Matriz A no rectangular (fila {i}).")
+        for x in fila:
+            float(x)
+    if b is not None:
+        if len(b) != n_rows:
+            raise ValueError(f"Dimensiones incompatibles: A es {n_rows}×{n_cols} pero len(b)={len(b)}.")
+        for x in b:
+            float(x)
 
 # -----------------------------------------------------------
 # Analiza sistema Ax = b (sirve para homogéneo o no homogéneo)
 # -----------------------------------------------------------
 def analizar_sistema(A: List[List[float]], b: List[float]) -> Dict[str, Any]:
     """
-    Analiza un sistema lineal Ax=b, usando el método Gauss–Jordan.
-    Detecta si es homogéneo, consistente, único o con infinitas soluciones.
+    Analiza un sistema lineal Ax=b usando Gauss–Jordan.
+    Mantiene el mismo formato de salida esperado por main.py.
     """
-    Ab = [fila[:] + [b[i]] for i, fila in enumerate(A)]
+    _validar_matriz_y_vector(A, b)
+
+    # Construcción segura de [A|b]
+    Ab = [A[i][:] + [float(b[i])] for i in range(len(A))]
     sl = SistemaLineal(Ab, decimales=4)
     out = sl.gauss_jordan()
 
@@ -65,7 +82,6 @@ def analizar_sistema(A: List[List[float]], b: List[float]) -> Dict[str, Any]:
         "conclusion": conclusion,
     }
 
-
 # -----------------------------------------------------------
 # Dependencia lineal (resuelve A·c = 0)
 # -----------------------------------------------------------
@@ -79,13 +95,15 @@ def analizar_dependencia(vectores: List[List[float]]) -> Dict[str, Any]:
 
     # Matriz A formada con vectores como columnas
     A = mat_from_columns(vectores)
+    _validar_matriz_y_vector(A, [0.0] * len(A))  # valida A y tamaño de b implícito
+
     b = [0.0] * len(A)  # vector nulo
     Ab = [A[i][:] + [b[i]] for i in range(len(A))]
 
     sl = SistemaLineal(Ab, decimales=4)
     out = sl.gauss_jordan()
 
-    # Clasificación del tipo de sistema homogéneo
+    # Clasificación del sistema homogéneo
     if out["tipo"] == "unica":
         veredicto = "independientes"
         mensaje = "Los vectores son linealmente independientes (solo solución trivial en A·c = 0)."
@@ -112,7 +130,6 @@ def analizar_dependencia(vectores: List[List[float]]) -> Dict[str, Any]:
         "rref": out.get("rref"),
     }
 
-
 # -----------------------------------------------------------
 # Unifica homogéneo / no homogéneo y dependencia lineal
 # -----------------------------------------------------------
@@ -121,11 +138,9 @@ def resolver_sistema_homogeneo_y_no_homogeneo(A, b=None):
     Resuelve el sistema Ax=b o Ax=0 (si b es None o vector nulo),
     para luego poder ser usado también en dependencia lineal.
     """
-    from homogeneo import analizar_sistema
     if b is None:
         b = [0.0] * len(A)
     return analizar_sistema(A, b)
-
 
 def resolver_dependencia_lineal_con_homogeneo(A):
     """

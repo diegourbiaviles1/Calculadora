@@ -1,3 +1,4 @@
+# algebra_vector.py
 from __future__ import annotations
 from typing import List, Dict, Any
 import math
@@ -8,8 +9,37 @@ from utilidad import (
     sumar_vec, dot_mat_vec, columnas, format_col_vector, format_matrix_bracket
 )
 
+# -----------------------------
+# Validaciones internas básicas
+# -----------------------------
+def _check_vector(v: List[float], nombre: str = "vector"):
+    if not isinstance(v, list) or len(v) == 0:
+        raise ValueError(f"{nombre} vacío o inválido.")
+    for x in v:
+        float(x)
+
+def _check_same_len(*vs: List[float]):
+    n = len(vs[0])
+    if any(len(v) != n for v in vs):
+        raise ValueError("Vectores de distinta dimensión.")
+
+def _check_matrix(A: List[List[float]], nombre: str = "A"):
+    if not A or not A[0]:
+        raise ValueError(f"Matriz {nombre} vacía.")
+    n = len(A[0])
+    for i, fila in enumerate(A, 1):
+        if len(fila) != n:
+            raise ValueError(f"Matriz {nombre} no rectangular (fila {i}).")
+        for x in fila:
+            float(x)
+
 # 1) Propiedades en R^n
 def verificar_propiedades(v: List[float], u: List[float], w: List[float], a: float, b: float, tol: float = DEFAULT_EPS) -> Dict[str, bool]:
+    # Validaciones
+    _check_vector(v, "v"); _check_vector(u, "u"); _check_vector(w, "w")
+    _check_same_len(v, u, w)
+    float(a); float(b)
+
     res: Dict[str, bool] = {}
     res["conmutativa"] = all(is_close(x, y, tol) for x, y in zip(vec_suma(v, u), vec_suma(u, v)))
 
@@ -50,14 +80,18 @@ def combinacion_lineal(vectores: List[List[float]], coef: List[float]) -> List[f
         raise ValueError("Tamaños incompatibles")
     if not vectores:
         return []
+    # Validar dimensiones
+    for v in vectores:
+        _check_vector(v, "vector")
     n = len(vectores[0])
     for v in vectores:
         if len(v) != n:
             raise ValueError("Vectores de distinta dimensión")
     res = [0.0] * n
     for v, c in zip(vectores, coef):
+        c = float(c)
         for i in range(n):
-            res[i] += float(c) * float(v[i])
+            res[i] += c * float(v[i])
     return res
 
 def combinacion_lineal_explicada(vectores: List[List[float]], coef: List[float], dec: int = 4) -> Dict[str, Any]:
@@ -66,10 +100,15 @@ def combinacion_lineal_explicada(vectores: List[List[float]], coef: List[float],
     if not vectores:
         return {"resultado": [], "texto": "No se proporcionaron vectores.", "resultado_simple": "[]"}
 
+    # Validar dimensiones y numerocidad
+    for v in vectores:
+        _check_vector(v, "vector")
     n = len(vectores[0])
     for v in vectores:
         if len(v) != n:
             raise ValueError("Vectores de distinta dimensión.")
+    for c in coef:
+        float(c)
 
     k = len(vectores)
     res = [0.0] * n
@@ -91,7 +130,7 @@ def combinacion_lineal_explicada(vectores: List[List[float]], coef: List[float],
     txt.append("\nCálculo componente a componente:")
     for i in range(n):
         sumandos = [f"{coef[j]}·{vectores[j][i]}" for j in range(k)]
-        res[i] = math.fsum(coef[j] * vectores[j][i] for j in range(k))
+        res[i] = math.fsum(float(coef[j]) * float(vectores[j][i]) for j in range(k))
         txt.append(f"b{i+1} = " + " + ".join(sumandos) + f" = {res[i]}")
 
     txt.append("\nResultado:")
@@ -103,6 +142,10 @@ def combinacion_lineal_explicada(vectores: List[List[float]], coef: List[float],
 def ecuacion_vectorial(vectores: List[List[float]], b: List[float]) -> Dict[str, Any]:
     if not vectores:
         return {"estado": "sin_vectores"}
+    # Validar entradas
+    for v in vectores:
+        _check_vector(v, "vector")
+    _check_vector(b, "b")
     n = len(vectores[0])
     for v in vectores:
         if len(v) != n:
@@ -110,6 +153,7 @@ def ecuacion_vectorial(vectores: List[List[float]], b: List[float]) -> Dict[str,
     if len(b) != n:
         raise ValueError("b tiene dimensión incompatible")
 
+    # Construir A (n x k) con columnas = vectores
     A = zeros(n, len(vectores))
     for j, v in enumerate(vectores):
         for i in range(n):
@@ -123,11 +167,26 @@ def ecuacion_vectorial(vectores: List[List[float]], b: List[float]) -> Dict[str,
 
 # 4) Resolver AX=B
 def resolver_AX_igual_B(A: List[List[float]], B) -> Dict[str, Any]:
+    # Validar A
+    _check_matrix(A, "A")
+
+    # Caso B matriz (m x p)
     if isinstance(B[0], list):
+        # Validar B rectangular y compatible
+        if not B or not B[0]:
+            raise ValueError("Matriz B vacía.")
+        mA = len(A)
+        for i, fila in enumerate(B, 1):
+            if len(fila) != len(B[0]):
+                raise ValueError(f"Matriz B no rectangular (fila {i}).")
+        if len(B) != mA:
+            raise ValueError("Dimensiones incompatibles entre A y B (filas).")
+
         res_cols = []
         reportes: List[str] = []
-        for col_idx in range(len(B[0])):
-            b = [B[i][col_idx] for i in range(len(B))]
+        p = len(B[0])
+        for col_idx in range(p):
+            b = [float(B[i][col_idx]) for i in range(len(B))]
             Ab = [fila[:] + [b[i]] for i, fila in enumerate(A)]
             sl = SistemaLineal(Ab, decimales=4)
             out = sl.gauss_jordan()
@@ -144,8 +203,12 @@ def resolver_AX_igual_B(A: List[List[float]], B) -> Dict[str, Any]:
             for i in range(n):
                 X[i][j] = res_cols[j][i]
         return {"estado": "ok", "X": X, "reportes": reportes}
+
+    # Caso B vector (m)
     else:
-        Ab = [fila[:] + [B[i]] for i, fila in enumerate(A)]
+        if len(B) != len(A):
+            raise ValueError("Dimensiones incompatibles entre A y b.")
+        Ab = [fila[:] + [float(B[i])] for i, fila in enumerate(A)]
         sl = SistemaLineal(Ab, decimales=4)
         out = sl.gauss_jordan()
         if out["tipo"] != "unica":
@@ -154,6 +217,12 @@ def resolver_AX_igual_B(A: List[List[float]], B) -> Dict[str, Any]:
 
 # 5) Distributiva A(u+v)=Au+Av
 def verificar_distributiva_matriz(A: List[List[float]], u: List[float], v: List[float], dec: int = 4) -> Dict[str, Any]:
+    # Validaciones
+    _check_matrix(A, "A")
+    _check_vector(u, "u"); _check_vector(v, "v")
+    if len(u) != len(A[0]) or len(v) != len(A[0]):
+        raise ValueError("Dimensiones incompatibles entre A y u/v.")
+
     pasos: List[str] = []
     pasos.append("Propiedad a verificar: A(u + v) = Au + Av\n")
     pasos.append("Datos:")
@@ -190,7 +259,10 @@ def verificar_distributiva_matriz(A: List[List[float]], u: List[float], v: List[
 
 # 6) Sistema → forma matricial Ax = b
 def sistema_a_forma_matricial(coefs: List[List[float]], terminos: List[float], nombres_vars: List[str]) -> Dict[str, Any]:
-    if len(coefs) == 0 or len(coefs) != len(terminos):
+    # Validaciones
+    _check_matrix(coefs, "A")
+    _check_vector(terminos, "b")
+    if len(coefs) != len(terminos):
         raise ValueError("Dimensiones inconsistentes entre coeficientes y términos independientes.")
     m, n = len(coefs), len(coefs[0])
     if len(nombres_vars) != n:
@@ -198,7 +270,7 @@ def sistema_a_forma_matricial(coefs: List[List[float]], terminos: List[float], n
 
     A = [fila[:] for fila in coefs]
     x_vars = nombres_vars[:]
-    b = terminos[:]
+    b = [float(x) for x in terminos]
 
     def _format_col_symbols(names: List[str]) -> str:
         return "\n".join([f"[{s}]" for s in names])
@@ -212,8 +284,8 @@ def sistema_a_forma_matricial(coefs: List[List[float]], terminos: List[float], n
 
 # 7) Matriz·vector explicado
 def multiplicacion_matriz_vector_explicada(A: List[List[float]], v: List[float], dec: int = 4) -> Dict[str, Any]:
-    if len(A) == 0:
-        raise ValueError("Matriz vacía.")
+    _check_matrix(A, "A")
+    _check_vector(v, "v")
     m, n = len(A), len(A[0])
     if len(v) != n:
         raise ValueError("Dimensiones incompatibles entre A y v.")
