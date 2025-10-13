@@ -16,6 +16,12 @@ from homogeneo import (
     resolver_sistema_homogeneo_y_no_homogeneo,
     resolver_dependencia_lineal_con_homogeneo
 )
+# ---- Programa 5: Operaciones con matrices y traspuesta ----
+from matrices import (
+    suma_matrices_explicada, resta_matrices_explicada,
+    escalar_por_matriz_explicada, multiplicacion_matrices_explicada,
+    traspuesta_explicada
+)
 
 # ----------------- Helpers de entrada/validación -----------------
 def pedir_entero(msg, minimo=None, maximo=None):
@@ -111,7 +117,7 @@ def op_combinacion_lineal_y_gauss_jordan():
         b = out_combinacion["resultado"]
         matriz_aumentada = [A[i] + [b[i]] for i in range(n)]
 
-        sl = SistemaLineal(matriz_aumentada)
+        sl = SistemaLineal(matriz_aumentada, decimales=4)
         resultado_gauss_jordan = sl.gauss_jordan()
 
         print("\n--- Proceso de Gauss-Jordan ---")
@@ -292,6 +298,125 @@ def opP4_dependencia():
     except Exception as e:
         print(f"Error: {e}")
 
+# -------- Programa 5: Operaciones con matrices y traspuesta --------
+def opP5_suma():
+    try:
+        print("\n--- Programa 5: Suma de matrices ---")
+        m, n = leer_dimensiones("Dimensiones de A y B (m n): ")
+        A = leer_matriz(m, n, "Matriz A:")
+        B = leer_matriz(m, n, "Matriz B:")
+        out = suma_matrices_explicada(A, B)
+        print("\nInterpretación:", out["mensaje"])
+        print("\n--- Pasos ---")
+        for p in out["pasos"]:
+            print(p)
+    except KeyboardInterrupt:
+        print("\nOperación cancelada por el usuario.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def opP5_resta():
+    try:
+        print("\n--- Programa 5: Resta de matrices ---")
+        m, n = leer_dimensiones("Dimensiones de A y B (m n): ")
+        A = leer_matriz(m, n, "Matriz A:")
+        B = leer_matriz(m, n, "Matriz B:")
+        out = resta_matrices_explicada(A, B)
+        print("\nInterpretación:", out["mensaje"])
+        print("\n--- Pasos ---")
+        for p in out["pasos"]:
+            print(p)
+    except KeyboardInterrupt:
+        print("\nOperación cancelada por el usuario.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def opP5_escalar():
+    try:
+        print("\n--- Programa 5: Multiplicación de matriz por escalar ---")
+        m, n = leer_dimensiones("Dimensiones de A (m n): ")
+        A = leer_matriz(m, n, "Matriz A:")
+        k = pedir_flotante("Escalar k: ")
+        out = escalar_por_matriz_explicada(k, A)
+        print("\nInterpretación:", out["mensaje"])
+        print("\n--- Pasos ---")
+        for p in out["pasos"]:
+            print(p)
+    except KeyboardInterrupt:
+        print("\nOperación cancelada por el usuario.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def opP5_producto():
+    try:
+        print("\n--- Programa 5: Multiplicación de matrices AB ---")
+        m, n = leer_dimensiones("Dimensiones de A (m n): ")
+        A = leer_matriz(m, n, "Matriz A:")
+        n2, p = leer_dimensiones("Dimensiones de B (n p): ")
+        if n2 != n:
+            print("Advertencia: Debe cumplirse columnas(A)=filas(B). Si no, fallará.")
+        B = leer_matriz(n2, p, "Matriz B:")
+        out = multiplicacion_matrices_explicada(A, B)
+        print("\nInterpretación:", out["mensaje"])
+        print("\n--- Pasos ---")
+        for ptxt in out["pasos"]:
+            print(ptxt)
+    except KeyboardInterrupt:
+        print("\nOperación cancelada por el usuario.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def opP5_traspuesta():
+    try:
+        print("\n--- Programa 5: Traspuesta de A (con verificación de propiedades) ---")
+        m, n = leer_dimensiones("Dimensiones de A (m n): ")
+        A = leer_matriz(m, n, "Matriz A:")
+
+        usar_B = pedir_si_no("¿Deseas ingresar una matriz B para verificar propiedades como (A+B)^T y (AB)^T? (s/n):")
+        B = None
+        if usar_B:
+            mB, nB = leer_dimensiones("Dimensiones de B (m n): ")
+            B = leer_matriz(mB, nB, "Matriz B:")
+
+        usar_k = pedir_si_no("¿Deseas ingresar un escalar k para verificar (kA)^T = kA^T? (s/n):")
+        k = pedir_flotante("Escalar k: ") if usar_k else None
+
+        out = traspuesta_explicada(A, B=B, k=k)
+        print("\nInterpretación:", out["mensaje"])
+        print("\n--- Pasos ---")
+        for p in out["pasos"]:
+            print(p)
+        print("\n--- Propiedades verificadas ---")
+        for pr in out["propiedades"]:
+            print("•", pr)
+    except KeyboardInterrupt:
+        print("\nOperación cancelada por el usuario.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def menu_programa5():
+    while True:
+        print("\n--- Programa 5: Operaciones con matrices y traspuesta ---")
+        print("1) Suma de matrices")
+        print("2) Resta de matrices")
+        print("3) Multiplicación por escalar")
+        print("4) Multiplicación de matrices (AB)")
+        print("5) Traspuesta (con propiedades)")
+        print("b) Volver")
+        op = pedir_opcion("Opción: ", {"1","2","3","4","5","b"})
+        if op == "1":
+            opP5_suma()
+        elif op == "2":
+            opP5_resta()
+        elif op == "3":
+            opP5_escalar()
+        elif op == "4":
+            opP5_producto()
+        elif op == "5":
+            opP5_traspuesta()
+        elif op == "b":
+            break
+
 # -------- Menús --------
 def menu_sistemas():
     while True:
@@ -341,8 +466,9 @@ def menu():
             print("2) Operaciones con vectores (propiedades, distributiva, combinación, ecuación vectorial)")
             print("3) Multiplicación matriz·vector (explicada)")
             print("4) Sistema homogéneo / no homogéneo + Dependencia lineal")
+            print("5) Operaciones con matrices y traspuesta (Programa 5)")
             print("q) Salir")
-            op = pedir_opcion("Opción: ", {"1", "2", "3", "4", "q"})
+            op = pedir_opcion("Opción: ", {"1", "2", "3", "4", "5", "q"})
             if op == "1":
                 menu_sistemas()
             elif op == "2":
@@ -351,6 +477,8 @@ def menu():
                 op_matriz_vector()
             elif op == "4":
                 opP4_sistema_h_oh()
+            elif op == "5":
+                menu_programa5()
             elif op == "q":
                 break
     except KeyboardInterrupt:
