@@ -133,6 +133,19 @@ def dot_mat_vec(A: List[List[float]], v: List[float]) -> List[float]:
     if len(v) != n:
         raise ValueError("Dimensiones incompatibles en A·v.")
     return [sum(A[i][j] * v[j] for j in range(n)) for i in range(m)]
+def formatear_matriz(M, decimales=2):
+    """
+    Devuelve una representación en texto de la matriz M
+    con los valores formateados y tabulados.
+    """
+    if not M:
+        return "[ ]"
+    lineas = []
+    for fila in M:
+        fila_str = "  ".join(f"{x:.{decimales}f}" for x in fila)
+        lineas.append(f"[ {fila_str} ]")
+    return "\n".join(lineas)
+
 
 # =========================
 #   Formato amigable

@@ -1,287 +1,247 @@
-# Reemplaza/ajusta en matrices.py
+# matrices.py
+# -*- coding: utf-8 -*-
+"""
+Operaciones con matrices y verificación de propiedades de la traspuesta.
+Sin NumPy. Pensado para integrarse con tu calculadora por menús.
+Todas las rutinas devuelven dicts con 'pasos', 'resultado' (si aplica) y 'conclusion'.
+"""
 
-from utilidad import DEFAULT_EPS
-# === helpers necesarios ===
-def _transpose(M):
-    """Devuelve la traspuesta de M."""
-    if not M or not M[0]:
-        return []
-    m, n = len(M), len(M[0])
-    # columnas j se vuelven filas
-    return [[float(M[i][j]) for i in range(m)] for j in range(n)]
+from typing import List, Tuple, Dict, Any
 
-def _eq_same_size(X, Y, tol=DEFAULT_EPS):
-    """Compara X e Y (mismo tamaño) con tolerancia numérica."""
-    if not X or not Y or not X[0] or not Y[0]:
+Matriz = List[List[float]]
+EPS = 1e-9  # tolerancia para comparaciones
+
+# ---------- Utilidades básicas ----------
+
+def es_rectangular(A: Matriz) -> bool:
+    return all(len(f) == len(A[0]) for f in A) if A else False
+
+def dims(A: Matriz) -> Tuple[int, int]:
+    return (len(A), len(A[0]) if A else 0)
+
+def mismas_dim(A: Matriz, B: Matriz) -> bool:
+    return dims(A) == dims(B)
+
+def compatibles_prod(A: Matriz, B: Matriz) -> bool:
+    return dims(A)[1] == dims(B)[0]
+
+def copia(A: Matriz) -> Matriz:
+    return [fila[:] for fila in A]
+
+def iguales(A: Matriz, B: Matriz, eps: float = EPS) -> bool:
+    if not mismas_dim(A, B):
         return False
-    if len(X) != len(Y) or len(X[0]) != len(Y[0]):
-        return False
-    m, n = len(X), len(X[0])
+    m, n = dims(A)
     for i in range(m):
         for j in range(n):
-            if abs(float(X[i][j]) - float(Y[i][j])) > tol:
+            if abs(A[i][j] - B[i][j]) > eps:
                 return False
     return True
 
+# ---------- Operaciones primitivas ----------
 
-def _format_rows_2dec(M):
-    if not M: 
-        return ""
-    out = []
-    for fila in M:
-        out.append("  ".join(f"{float(x):.2f}" for x in fila))
-    return "\n".join(out)
+def traspuesta(A: Matriz) -> Matriz:
+    m, n = dims(A)
+    return [[A[i][j] for i in range(m)] for j in range(n)]
 
-def suma_matrices_explicada(A, B, dec: int = 2):
-    if not A or not B or not A[0] or not B[0]:
-        return {"ok": False, "mensaje": "Matrices vacías o inválidas.", "pasos": []}
-    if len(A) != len(B) or len(A[0]) != len(B[0]):
-        return {"ok": False, "mensaje": "No se puede sumar: dimensiones distintas.", "pasos": []}
+def suma(A: Matriz, B: Matriz) -> Matriz:
+    if not mismas_dim(A, B):
+        raise ValueError("Para A + B se requieren dimensiones iguales.")
+    m, n = dims(A)
+    return [[A[i][j] + B[i][j] for j in range(n)] for i in range(m)]
 
-    m, n = len(A), len(A[0])
-    pasos = []
+def resta(A: Matriz, B: Matriz) -> Matriz:
+    if not mismas_dim(A, B):
+        raise ValueError("Para A - B se requieren dimensiones iguales.")
+    m, n = dims(A)
+    return [[A[i][j] - B[i][j] for j in range(n)] for i in range(m)]
 
-    pasos.append(f"Paso 1 (Matrices de entrada):\nA:\n{_format_rows_2dec(A)}\nB:\n{_format_rows_2dec(B)}\n")
+def escalar_por_matriz(k: float, A: Matriz) -> Matriz:
+    m, n = dims(A)
+    return [[k * A[i][j] for j in range(n)] for i in range(m)]
 
-    # Suma normal C = A + B
-    C = [[0.0]*n for _ in range(m)]
-    pasos.append("Paso 2 (Cálculo elemento a elemento de C=A+B):")
+def producto(A: Matriz, B: Matriz) -> Matriz:
+    if not compatibles_prod(A, B):
+        raise ValueError("Para AB, #columnas(A) debe igualar #filas(B).")
+    m, p = dims(A)
+    p2, n = dims(B)
+    assert p == p2
+    C = [[0.0] * n for _ in range(m)]
     for i in range(m):
-        for j in range(n):
-            a_ij = float(A[i][j]); b_ij = float(B[i][j])
-            C[i][j] = a_ij + b_ij
-            pasos.append(f"  c{i+1}{j+1} = {a_ij:.{dec}f} + {b_ij:.{dec}f} = {C[i][j]:.{dec}f}")
+        for k in range(p):
+            aik = A[i][k]
+            for j in range(n):
+                C[i][j] += aik * B[k][j]
+    return C
 
-    pasos.append(f"\nPaso 3 (Resultado C=A+B):\n{_format_rows_2dec(C)}\n")
+# ---------- Wrappers "explicados" (con pasos y conclusiones) ----------
 
-    # Verificación (A+B)^T = A^T + B^T
-    CT = _transpose(C)
-    AT = _transpose(A)
-    BT = _transpose(B)
-    S = [[AT[i][j] + BT[i][j] for j in range(len(AT[0]))] for i in range(len(AT))]
-
-    ver = []
-    ver.append("Verificación de propiedad: (A + B)^T = A^T + B^T")
-    ver.append("  (A+B)^T =")
-    ver.append(_format_rows_2dec(CT))
-    ver.append("  A^T + B^T =")
-    ver.append(_format_rows_2dec(S))
-    equivalentes = _eq_same_size(CT, S)
-    ver.append("  ¿Son iguales? → " + ("Sí, se cumple" if equivalentes else "No, no se cumple"))
-
+def suma_matrices_explicada(A: Matriz, B: Matriz) -> Dict[str, Any]:
+    pasos = []
+    if not es_rectangular(A) or not es_rectangular(B):
+        return {"pasos": pasos, "conclusion": "Alguna matriz no es rectangular."}
+    if not mismas_dim(A, B):
+        return {"pasos": pasos, "conclusion": "No se pueden sumar: dimensiones distintas."}
+    pasos.append(f"Dimensiones: A{dims(A)}, B{dims(B)} → compatibles para suma.")
+    C = suma(A, B)
+    pasos.append("C = A + B calculada elemento a elemento.")
+    # Propiedad de la traspuesta en la suma
+    CT = traspuesta(C)
+    AT, BT = traspuesta(A), traspuesta(B)
+    suma_Ts = suma(AT, BT)
+    cumple = iguales(CT, suma_Ts)
+    pasos.append("Se calculó (A + B)^T y A^T + B^T para comparar.")
+    conclusion = "Se cumple la propiedad (A + B)^T = A^T + B^T." if cumple else \
+                 "No se cumple la propiedad (A + B)^T = A^T + B^T."
     return {
-        "ok": True,
-        "C": C,
         "pasos": pasos,
-        "mensaje": "Suma realizada correctamente.",
-        "propiedad": "(A + B)^T = A^T + B^T",
-        "equivalentes": equivalentes,
-        "detalle_verificacion": "\n".join(ver),
+        "resultado": C,
+        "traspuesta_del_resultado": CT,
+        "AT": AT, "BT": BT, "AT_mas_BT": suma_Ts,
+        "conclusion": conclusion
     }
 
-
-def resta_matrices_explicada(A, B, dec: int = 2):
-    if not A or not B or not A[0] or not B[0]:
-        return {"ok": False, "mensaje": "Matrices vacías o inválidas.", "pasos": []}
-    if len(A) != len(B) or len(A[0]) != len(B[0]):
-        return {"ok": False, "mensaje": "No se puede restar: dimensiones distintas.", "pasos": []}
-
-    m, n = len(A), len(A[0])
+def resta_matrices_explicada(A: Matriz, B: Matriz) -> Dict[str, Any]:
     pasos = []
-    pasos.append(f"Paso 1 (Matrices de entrada):\nA:\n{_format_rows_2dec(A)}\nB:\n{_format_rows_2dec(B)}\n")
-
-    # Resta normal D = A − B
-    D = [[0.0]*n for _ in range(m)]
-    pasos.append("Paso 2 (Cálculo elemento a elemento de D=A−B):")
-    for i in range(m):
-        for j in range(n):
-            a_ij = float(A[i][j]); b_ij = float(B[i][j])
-            D[i][j] = a_ij - b_ij
-            pasos.append(f"  d{i+1}{j+1} = {a_ij:.{dec}f} - {b_ij:.{dec}f} = {D[i][j]:.{dec}f}")
-
-    pasos.append(f"\nPaso 3 (Resultado D=A−B):\n{_format_rows_2dec(D)}\n")
-
-    # Verificación (A−B)^T = A^T − B^T
-    DT = _transpose(D)
-    AT = _transpose(A)
-    BT = _transpose(B)
-    R = [[AT[i][j] - BT[i][j] for j in range(len(AT[0]))] for i in range(len(AT))]
-
-    ver = []
-    ver.append("Verificación de propiedad: (A − B)^T = A^T − B^T")
-    ver.append("  (A−B)^T =")
-    ver.append(_format_rows_2dec(DT))
-    ver.append("  A^T − B^T =")
-    ver.append(_format_rows_2dec(R))
-    equivalentes = _eq_same_size(DT, R)
-    ver.append("  ¿Son iguales? → " + ("Sí, se cumple" if equivalentes else "No, no se cumple"))
-
+    if not es_rectangular(A) or not es_rectangular(B):
+        return {"pasos": pasos, "conclusion": "Alguna matriz no es rectangular."}
+    if not mismas_dim(A, B):
+        return {"pasos": pasos, "conclusion": "No se pueden restar: dimensiones distintas."}
+    pasos.append(f"Dimensiones: A{dims(A)}, B{dims(B)} → compatibles para resta.")
+    C = resta(A, B)
+    pasos.append("C = A - B calculada elemento a elemento.")
+    # Propiedad: (A - B)^T = A^T - B^T
+    CT = traspuesta(C)
+    AT, BT = traspuesta(A), traspuesta(B)
+    resta_Ts = resta(AT, BT)
+    cumple = iguales(CT, resta_Ts)
+    pasos.append("Se calculó (A - B)^T y A^T - B^T para comparar.")
+    conclusion = "Se cumple la propiedad (A - B)^T = A^T - B^T." if cumple else \
+                 "No se cumple la propiedad (A - B)^T = A^T - B^T."
     return {
-        "ok": True,
-        "C": D,
         "pasos": pasos,
-        "mensaje": "Resta realizada correctamente.",
-        "propiedad": "(A − B)^T = A^T − B^T",
-        "equivalentes": equivalentes,
-        "detalle_verificacion": "\n".join(ver),
+        "resultado": C,
+        "traspuesta_del_resultado": CT,
+        "AT": AT, "BT": BT, "AT_menos_BT": resta_Ts,
+        "conclusion": conclusion
     }
 
-
-def escalar_por_matriz_explicada(k, A, dec: int = 2):
-    if not A or not A[0]:
-        return {"ok": False, "mensaje": "Matriz vacía o inválida.", "pasos": []}
-    k = float(k)
-
-    m, n = len(A), len(A[0])
+def producto_escalar_explicado(k: float, A: Matriz) -> Dict[str, Any]:
     pasos = []
-    pasos.append(f"Paso 1 (Matriz de entrada):\nA:\n{_format_rows_2dec(A)}\n")
-
-    # kA
-    B = [[0.0]*n for _ in range(m)]
-    pasos.append(f"Paso 2 (Cálculo elemento a elemento): B = ({k:.{dec}f}) · A")
-    for i in range(m):
-        for j in range(n):
-            a_ij = float(A[i][j])
-            B[i][j] = k * a_ij
-            pasos.append(f"  b{i+1}{j+1} = {k:.{dec}f} · {a_ij:.{dec}f} = {B[i][j]:.{dec}f}")
-
-    pasos.append(f"\nPaso 3 (Resultado B=kA):\n{_format_rows_2dec(B)}\n")
-
-    # Verificación (kA)^T = k A^T
-    BT = _transpose(B)
-    AT = _transpose(A)
-    kAT = [[k * AT[i][j] for j in range(len(AT[0]))] for i in range(len(AT))]
-
-    ver = []
-    ver.append("Verificación de propiedad: (kA)^T = k A^T")
-    ver.append("  (kA)^T =")
-    ver.append(_format_rows_2dec(BT))
-    ver.append("  k·A^T =")
-    ver.append(_format_rows_2dec(kAT))
-    equivalentes = _eq_same_size(BT, kAT)
-    ver.append("  ¿Son iguales? → " + ("Sí, se cumple" if equivalentes else "No, no se cumple"))
-
+    if not es_rectangular(A):
+        return {"pasos": pasos, "conclusion": "La matriz A no es rectangular."}
+    pasos.append(f"Se multiplicó cada entrada de A por k = {k:g}.")
+    C = escalar_por_matriz(k, A)
+    # Propiedad: (kA)^T = kA^T
+    CT = traspuesta(C)
+    AT = traspuesta(A)
+    kAT = escalar_por_matriz(k, AT)
+    cumple = iguales(CT, kAT)
+    pasos.append("Se comparó (kA)^T con k·A^T.")
+    conclusion = "Se cumple la propiedad (kA)^T = kA^T." if cumple else \
+                 "No se cumple la propiedad (kA)^T = kA^T."
     return {
-        "ok": True,
-        "B": B,
         "pasos": pasos,
-        "mensaje": "Multiplicación por escalar realizada correctamente.",
-        "propiedad": "(kA)^T = k A^T",
-        "equivalentes": equivalentes,
-        "detalle_verificacion": "\n".join(ver),
+        "resultado": C,
+        "traspuesta_del_resultado": CT,
+        "AT": AT, "kAT": kAT,
+        "conclusion": conclusion
     }
 
-
-def multiplicacion_matrices_explicada(A, B, dec: int = 2):
-    if not A or not B or not A[0] or not B[0]:
-        return {"ok": False, "mensaje": "Matrices vacías o inválidas.", "pasos": []}
-
-    m, n = len(A), len(A[0])
-    n2, p = len(B), len(B[0])
-
+def producto_matrices_explicado(A: Matriz, B: Matriz) -> Dict[str, Any]:
     pasos = []
-    pasos.append(f"Paso 1 (Matrices de entrada):\nA:\n{_format_rows_2dec(A)}\nB:\n{_format_rows_2dec(B)}\n")
+    if not es_rectangular(A) or not es_rectangular(B):
+        return {"pasos": pasos, "conclusion": "Alguna matriz no es rectangular."}
+    if not compatibles_prod(A, B):
+        return {"pasos": pasos, "conclusion": "No se puede multiplicar: columnas(A) ≠ filas(B)."}
+    pasos.append(f"Dimensiones: A{dims(A)}, B{dims(B)} → compatibles para producto.")
+    C = producto(A, B)
+    pasos.append("C = A·B con regla i,j: C[i][j] = sum_k A[i][k]·B[k][j].")
+    # Propiedad: (AB)^T = B^T A^T
+    CT = traspuesta(C)
+    AT, BT = traspuesta(A), traspuesta(B)
+    BT_AT = producto(BT, AT)
+    cumple = iguales(CT, BT_AT)
+    pasos.append("Se calculó (AB)^T y B^T·A^T para comparar.")
+    conclusion = "Se cumple la propiedad (AB)^T = B^T·A^T." if cumple else \
+                 "No se cumple la propiedad (AB)^T = B^T·A^T."
+    return {
+        "pasos": pasos,
+        "resultado": C,
+        "traspuesta_del_resultado": CT,
+        "AT": AT, "BT": BT, "BT_por_AT": BT_AT,
+        "conclusion": conclusion
+    }
 
-    if n != n2:
-        return {"ok": False, "mensaje": "No se puede multiplicar: columnas(A) ≠ filas(B).", "pasos": pasos}
+def traspuesta_explicada(A: Matriz) -> Dict[str, Any]:
+    pasos = []
+    if not es_rectangular(A):
+        return {"pasos": pasos, "conclusion": "La matriz A no es rectangular."}
+    m, n = dims(A)
+    pasos.append(f"Se intercambian filas↔columnas: A es {m}×{n}, A^T será {n}×{m}.")
+    AT = traspuesta(A)
+    # Propiedad: (A^T)^T = A
+    ATT = traspuesta(AT)
+    cumple = iguales(ATT, A)
+    pasos.append("Verificación: (A^T)^T comparada con A.")
+    conclusion = "Se cumple la propiedad (A^T)^T = A." if cumple else \
+                 "No se cumple la propiedad (A^T)^T = A."
+    return {
+        "pasos": pasos,
+        "resultado": AT,
+        "ATT": ATT,
+        "conclusion": conclusion
+    }
 
-    C = [[0.0]*p for _ in range(m)]
-    pasos.append("Paso 2 (Producto fila×columna, elemento a elemento):")
-    for i in range(m):
-        for j in range(p):
-            terminos = []
-            s = 0.0
-            for k in range(n):
-                a = float(A[i][k])
-                b = float(B[k][j])
-                terminos.append(f"{a:.{dec}f}·{b:.{dec}f}")
-                s += a * b
-            C[i][j] = s
-            pasos.append(f"  c{i+1}{j+1} = " + " + ".join(terminos) + f" = {s:.{dec}f}")
-
-    pasos.append(f"\nPaso 3 (Resultado):\n{_format_rows_2dec(C)}\n")
-    return {"ok": True, "C": C, "pasos": pasos, "mensaje": "Producto AB realizado correctamente."}
-
-
-def traspuesta_explicada(A, B=None, k=None, dec: int = 2):
+def verificar_propiedades_traspuesta(A: Matriz, B: Matriz, k: float) -> Dict[str, Any]:
     """
-    Calcula la traspuesta de A, muestra paso a paso el intercambio de filas por columnas,
-    verifica las propiedades básicas y genera mensajes interpretativos claros.
+    Consolidado a), b), (versión resta), c), d).
     """
-    if not A or not A[0]:
-        return {"ok": False, "mensaje": "Matriz vacía o inválida.", "pasos": [], "propiedades": [], "interpretacion": ""}
+    info: Dict[str, Any] = {}
 
-    m, n = len(A), len(A[0])
-    pasos, props = [], []
+    # a) (A^T)^T = A
+    ATT = traspuesta(traspuesta(A))
+    cumple_a = iguales(ATT, A)
+    info["a"] = {"se_cumple": cumple_a,
+                 "mensaje": "Se cumple la propiedad (A^T)^T = A." if cumple_a
+                            else "No se cumple la propiedad (A^T)^T = A."}
 
-    def fmt(x): return f"{float(x):.{dec}f}"
-    def fmtM(M): return "\n".join("  ".join(fmt(x) for x in fila) for fila in M)
+    # b) (A + B)^T = A^T + B^T (si aplica)
+    if mismas_dim(A, B):
+        izq_b = traspuesta(suma(A, B))
+        der_b = suma(traspuesta(A), traspuesta(B))
+        cumple_b = iguales(izq_b, der_b)
+        info["b_suma"] = {"se_cumple": cumple_b,
+                          "mensaje": "Se cumple la propiedad (A + B)^T = A^T + B^T." if cumple_b
+                                     else "No se cumple la propiedad (A + B)^T = A^T + B^T."}
+        # extra: resta
+        izq_br = traspuesta(resta(A, B))
+        der_br = resta(traspuesta(A), traspuesta(B))
+        cumple_br = iguales(izq_br, der_br)
+        info["b_resta"] = {"se_cumple": cumple_br,
+                           "mensaje": "Se cumple la propiedad (A - B)^T = A^T - B^T." if cumple_br
+                                      else "No se cumple la propiedad (A - B)^T = A^T - B^T."}
+    else:
+        info["b_suma"] = {"se_cumple": False, "mensaje": "No aplica: A y B no tienen las mismas dimensiones."}
+        info["b_resta"] = {"se_cumple": False, "mensaje": "No aplica: A y B no tienen las mismas dimensiones."}
 
-    # Paso 1: Mostrar matriz original
-    pasos.append("Paso 1: Matriz original A")
-    pasos.append(fmtM(A))
+    # c) (kA)^T = kA^T
+    izq_c = traspuesta(escalar_por_matriz(k, A))
+    der_c = escalar_por_matriz(k, traspuesta(A))
+    cumple_c = iguales(izq_c, der_c)
+    info["c"] = {"se_cumple": cumple_c,
+                 "mensaje": "Se cumple la propiedad (kA)^T = kA^T." if cumple_c
+                            else "No se cumple la propiedad (kA)^T = kA^T."}
 
-    # Paso 2: Mostrar cómo se obtiene la traspuesta
-    pasos.append("\nPaso 2: Intercambio de filas por columnas (A^T)")
-    T = [[float(A[i][j]) for i in range(m)] for j in range(n)]
-    for i in range(m):
-        for j in range(n):
-            pasos.append(f"  Elemento a{i+1}{j+1} pasa a posición t{j+1}{i+1}")
-    pasos.append("\nResultado A^T:")
-    pasos.append(fmtM(T))
+    # d) (AB)^T = B^T A^T (si aplica)
+    if compatibles_prod(A, B):
+        izq_d = traspuesta(producto(A, B))
+        der_d = producto(traspuesta(B), traspuesta(A))
+        cumple_d = iguales(izq_d, der_d)
+        info["d"] = {"se_cumple": cumple_d,
+                     "mensaje": "Se cumple la propiedad (AB)^T = B^T·A^T." if cumple_d
+                                else "No se cumple la propiedad (AB)^T = B^T·A^T."}
+    else:
+        info["d"] = {"se_cumple": False, "mensaje": "No aplica: columnas(A) ≠ filas(B)."}
 
-    # Propiedades verificadas
-    pasos.append("\nPaso 3: Verificación de propiedades básicas")
-
-    # (A^T)^T = A
-    TT = [[float(T[i][j]) for i in range(len(T))] for j in range(len(T[0]))]
-    cumple1 = all(abs(TT[i][j] - float(A[i][j])) < DEFAULT_EPS for i in range(m) for j in range(n))
-    props.append(f"(A^T)^T = A : {'Se cumple' if cumple1 else 'No se cumple'}")
-
-    # (A + B)^T = A^T + B^T
-    if B is not None and B and B[0]:
-        if len(B) == m and len(B[0]) == n:
-            BT = [[float(B[i][j]) for i in range(len(B))] for j in range(len(B[0]))]
-            S = [[float(A[i][j]) + float(B[i][j]) for j in range(n)] for i in range(m)]
-            lhs = [[float(S[i][j]) for i in range(m)] for j in range(n)]  # (A+B)^T
-            rhs = [[T[i][j] + BT[i][j] for j in range(len(T[0]))] for i in range(len(T))]  # A^T+B^T
-            cumple2 = all(abs(lhs[i][j] - rhs[i][j]) < DEFAULT_EPS for i in range(len(lhs)) for j in range(len(lhs[0])))
-            props.append(f"(A + B)^T = A^T + B^T : {'Se cumple' if cumple2 else 'No se cumple'}")
-        else:
-            props.append("(A + B)^T = A^T + B^T : no aplica (dimensiones incompatibles).")
-
-    # (kA)^T = kA^T
-    if k is not None:
-        kf = float(k)
-        kA = [[kf * float(A[i][j]) for j in range(n)] for i in range(m)]
-        lhs = [[float(kA[i][j]) for i in range(m)] for j in range(n)]  # (kA)^T
-        rhs = [[kf * T[i][j] for j in range(len(T[0]))] for i in range(len(T))]  # kA^T
-        cumple3 = all(abs(lhs[i][j] - rhs[i][j]) < DEFAULT_EPS for i in range(len(lhs)) for j in range(len(lhs[0])))
-        props.append(f"(kA)^T = kA^T : {'Se cumple' if cumple3 else 'No se cumple'}")
-
-    # (AB)^T = B^T A^T
-    if B is not None and B and B[0] and len(A[0]) == len(B):
-        AB = [[sum(float(A[i][k]) * float(B[k][j]) for k in range(len(B))) for j in range(len(B[0]))] for i in range(m)]
-        lhs = [[float(AB[i][j]) for i in range(len(AB))] for j in range(len(AB[0]))]  # (AB)^T
-        BT = [[float(B[i][j]) for i in range(len(B))] for j in range(len(B[0]))]
-        rhs = [[sum(BT[i][k] * T[k][j] for k in range(len(T))) for j in range(len(T[0]))] for i in range(len(BT))]
-        cumple4 = all(abs(lhs[i][j] - rhs[i][j]) < DEFAULT_EPS for i in range(len(lhs)) for j in range(len(lhs[0])))
-        props.append(f"(AB)^T = B^T A^T : {'Se cumple' if cumple4 else 'No se cumple'}")
-
-    # Interpretación final
-    interpretacion = []
-    interpretacion.append("\nInterpretación y Verificación:")
-    interpretacion.append("La matriz traspuesta A^T se obtuvo intercambiando filas por columnas.")
-    interpretacion.append("Las propiedades verificadas indican las igualdades fundamentales de la traspuesta.")
-    interpretacion.append("Por ejemplo, (A^T)^T = A confirma que al trasponer dos veces se recupera la matriz original.")
-    interpretacion.append("Cada comparación numérica se realizó elemento a elemento con precisión de tolerancia numérica.\n")
-
-    return {
-        "ok": True,
-        "A_T": T,
-        "pasos": pasos,
-        "propiedades": props,
-        "mensaje": "Traspuesta calculada y propiedades verificadas correctamente.",
-        "interpretacion": "\n".join(interpretacion)
-    }
-
+    return info

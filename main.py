@@ -1,27 +1,15 @@
 # main.py
 # Nota: Se mantiene el mismo formato de mensajes y menús.
-# Cambios clave: validaciones de entrada, manejo de excepciones, y eliminación de import 'info' conflictivo.
+# Cambios clave: validaciones de entrada, manejo de excepciones, y
+# adecuación a las funciones/keys del módulo matrices.py.
 
-from utilidad import (
-    leer_matriz, leer_vector, leer_lista_vectores, leer_dimensiones, mat_from_columns
-)
-from algebra_vector import (
-   verificar_propiedades, combinacion_lineal_explicada, ecuacion_vectorial, resolver_AX_igual_B,
-    verificar_distributiva_matriz, sistema_a_forma_matricial, multiplicacion_matriz_vector_explicada
-)
+from utilidad import *
+from algebra_vector import *
 from sistema_lineal import SistemaLineal, formatear_solucion_parametrica
-from homogeneo import (
-    analizar_sistema,
-    analizar_dependencia,
-    resolver_sistema_homogeneo_y_no_homogeneo,
-    resolver_dependencia_lineal_con_homogeneo
-)
-# ---- Programa 5: Operaciones con matrices y traspuesta ----
-from matrices import (
-    suma_matrices_explicada, resta_matrices_explicada,
-    escalar_por_matriz_explicada, multiplicacion_matrices_explicada,
-    traspuesta_explicada
-)
+from homogeneo import *
+from matrices import *  # suma_matrices_explicada, resta_matrices_explicada,
+                        # producto_escalar_explicado, producto_matrices_explicado,
+                        # traspuesta_explicada, verificar_propiedades_traspuesta
 
 # ----------------- Helpers de entrada/validación -----------------
 def pedir_entero(msg, minimo=None, maximo=None):
@@ -299,28 +287,35 @@ def opP4_dependencia():
         print(f"Error: {e}")
 
 # -------- Programa 5: Operaciones con matrices y traspuesta --------
-# -------- Programa 5: Operaciones con matrices y traspuesta --------
 def opP5_suma():
     try:
         print("\n--- Programa 5: Suma de matrices (con verificación de traspuestas) ---")
         m, n = leer_dimensiones("Dimensiones de A y B (m n): ")
         A = leer_matriz(m, n, "Matriz A:")
         B = leer_matriz(m, n, "Matriz B:")
+
         out = suma_matrices_explicada(A, B)
 
-        print("\nInterpretación:", out["mensaje"])
         print("\n--- Pasos ---")
         for p in out["pasos"]:
             print(p)
-        print("\n--- Verificación de propiedad ---")
-        print(out["propiedad"])
-        print(out["detalle_verificacion"])
+
+        print("\nResultado C = A + B:")
+        print(formatear_matriz(out["resultado"]))
+        print("\n( A + B )^T:")
+        print(formatear_matriz(out["traspuesta_del_resultado"]))
+        print("\nA^T:")
+        print(formatear_matriz(out["AT"]))
+        print("\nB^T:")
+        print(formatear_matriz(out["BT"]))
+        print("\nA^T + B^T:")
+        print(formatear_matriz(out["AT_mas_BT"]))
+        print("\n>>>", out["conclusion"])
         input("\nPresiona ENTER para continuar...")
     except KeyboardInterrupt:
         print("\nOperación cancelada por el usuario.")
     except Exception as e:
         print(f"Error: {e}")
-
 
 def opP5_resta():
     try:
@@ -328,21 +323,29 @@ def opP5_resta():
         m, n = leer_dimensiones("Dimensiones de A y B (m n): ")
         A = leer_matriz(m, n, "Matriz A:")
         B = leer_matriz(m, n, "Matriz B:")
+
         out = resta_matrices_explicada(A, B)
 
-        print("\nInterpretación:", out["mensaje"])
         print("\n--- Pasos ---")
         for p in out["pasos"]:
             print(p)
-        print("\n--- Verificación de propiedad ---")
-        print(out["propiedad"])
-        print(out["detalle_verificacion"])
+
+        print("\nResultado C = A - B:")
+        print(formatear_matriz(out["resultado"]))
+        print("\n( A - B )^T:")
+        print(formatear_matriz(out["traspuesta_del_resultado"]))
+        print("\nA^T:")
+        print(formatear_matriz(out["AT"]))
+        print("\nB^T:")
+        print(formatear_matriz(out["BT"]))
+        print("\nA^T - B^T:")
+        print(formatear_matriz(out["AT_menos_BT"]))
+        print("\n>>>", out["conclusion"])
         input("\nPresiona ENTER para continuar...")
     except KeyboardInterrupt:
         print("\nOperación cancelada por el usuario.")
     except Exception as e:
         print(f"Error: {e}")
-
 
 def opP5_escalar():
     try:
@@ -350,22 +353,27 @@ def opP5_escalar():
         m, n = leer_dimensiones("Dimensiones de A (m n): ")
         A = leer_matriz(m, n, "Matriz A:")
         k = pedir_flotante("Escalar k: ")
-        out = escalar_por_matriz_explicada(k, A)
 
-        print("\nInterpretación:", out["mensaje"])
+        out = producto_escalar_explicado(k, A)
+
         print("\n--- Pasos ---")
         for p in out["pasos"]:
             print(p)
-        print("\n--- Verificación de propiedad ---")
-        print(out["propiedad"])
-        print(out["detalle_verificacion"])
+
+        print("\nResultado k·A:")
+        print(formatear_matriz(out["resultado"]))
+        print("\n( kA )^T:")
+        print(formatear_matriz(out["traspuesta_del_resultado"]))
+        print("\nA^T:")
+        print(formatear_matriz(out["AT"]))
+        print("\nk·A^T:")
+        print(formatear_matriz(out["kAT"]))
+        print("\n>>>", out["conclusion"])
         input("\nPresiona ENTER para continuar...")
     except KeyboardInterrupt:
         print("\nOperación cancelada por el usuario.")
     except Exception as e:
         print(f"Error: {e}")
-
-
 
 def opP5_producto():
     try:
@@ -374,13 +382,32 @@ def opP5_producto():
         A = leer_matriz(m, n, "Matriz A:")
         n2, p = leer_dimensiones("Dimensiones de B (n p): ")
         if n2 != n:
-            print("Advertencia: Debe cumplirse columnas(A)=filas(B). Si no, fallará.")
+            print("Error: Debe cumplirse columnas(A)=filas(B).")
+            return
         B = leer_matriz(n2, p, "Matriz B:")
-        out = multiplicacion_matrices_explicada(A, B)
-        print("\nInterpretación:", out["mensaje"])
+
+        out = producto_matrices_explicado(A, B)
+
         print("\n--- Pasos ---")
         for ptxt in out["pasos"]:
             print(ptxt)
+
+        print("\nResultado C = A·B:")
+        print(formatear_matriz(out["resultado"]))
+        print("\n( AB )^T:")
+        print(formatear_matriz(out["traspuesta_del_resultado"]))
+        print("\nB^T:")
+        print(formatear_matriz(out["BT"]))
+
+        print("\nA^T:")
+        print(formatear_matriz(out["AT"]))
+
+        print("\nB^T·A^T:")
+        print(formatear_matriz(out["BT_por_AT"]))
+
+
+        print("\n>>>", out["conclusion"])
+        input("\nPresiona ENTER para continuar...")
     except KeyboardInterrupt:
         print("\nOperación cancelada por el usuario.")
     except Exception as e:
@@ -392,7 +419,7 @@ def opP5_traspuesta():
         m, n = leer_dimensiones("Dimensiones de A (m n): ")
         A = leer_matriz(m, n, "Matriz A:")
 
-        usar_B = pedir_si_no("¿Deseas ingresar una matriz B para verificar propiedades como (A+B)^T y (AB)^T? (s/n):")
+        usar_B = pedir_si_no("¿Deseas ingresar una matriz B para verificar (A+B)^T y (AB)^T? (s/n):")
         B = None
         if usar_B:
             mB, nB = leer_dimensiones("Dimensiones de B (m n): ")
@@ -401,14 +428,31 @@ def opP5_traspuesta():
         usar_k = pedir_si_no("¿Deseas ingresar un escalar k para verificar (kA)^T = kA^T? (s/n):")
         k = pedir_flotante("Escalar k: ") if usar_k else None
 
-        out = traspuesta_explicada(A, B=B, k=k)
-        print("\nInterpretación:", out["mensaje"])
-        print("\n--- Pasos ---")
-        for p in out["pasos"]:
+        # (A^T)^T = A
+        base = traspuesta_explicada(A)
+        print("\n--- Pasos (traspuesta de A) ---")
+        for p in base["pasos"]:
             print(p)
-        print("\n--- Propiedades verificadas ---")
-        for pr in out["propiedades"]:
-            print("•", pr)
+        print("\nA^T:")
+        print(formatear_matriz(base["resultado"]))
+        print("\n>>>", base["conclusion"])
+
+        # Propiedades adicionales solo si el usuario proporciona B y/o k
+        if usar_B or usar_k:
+            props = verificar_propiedades_traspuesta(A, B if usar_B else [[0.0]], k if usar_k else 1.0)
+            print("\n--- Propiedades verificadas ---")
+            # a) siempre
+            print("•", props["a"]["mensaje"])
+            # b) y d) solo si hay B real
+            if usar_B:
+                print("•", props["b_suma"]["mensaje"])
+                print("•", props["b_resta"]["mensaje"])
+                print("•", props["d"]["mensaje"])
+            # c) solo si hay k
+            if usar_k:
+                print("•", props["c"]["mensaje"])
+
+        input("\nPresiona ENTER para continuar...")
     except KeyboardInterrupt:
         print("\nOperación cancelada por el usuario.")
     except Exception as e:
@@ -486,7 +530,7 @@ def menu():
             print("2) Operaciones con vectores (propiedades, distributiva, combinación, ecuación vectorial)")
             print("3) Multiplicación matriz·vector (explicada)")
             print("4) Sistema homogéneo / no homogéneo + Dependencia lineal")
-            print("5) Operaciones con matrices y traspuesta (Programa 5)")
+            print("5) Operaciones con matrices y traspuesta ")
             print("q) Salir")
             op = pedir_opcion("Opción: ", {"1", "2", "3", "4", "5", "q"})
             if op == "1":
