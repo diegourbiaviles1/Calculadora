@@ -299,53 +299,73 @@ def opP4_dependencia():
         print(f"Error: {e}")
 
 # -------- Programa 5: Operaciones con matrices y traspuesta --------
+# -------- Programa 5: Operaciones con matrices y traspuesta --------
 def opP5_suma():
     try:
-        print("\n--- Programa 5: Suma de matrices ---")
+        print("\n--- Programa 5: Suma de matrices (con verificación de traspuestas) ---")
         m, n = leer_dimensiones("Dimensiones de A y B (m n): ")
         A = leer_matriz(m, n, "Matriz A:")
         B = leer_matriz(m, n, "Matriz B:")
         out = suma_matrices_explicada(A, B)
+
         print("\nInterpretación:", out["mensaje"])
         print("\n--- Pasos ---")
         for p in out["pasos"]:
             print(p)
+        print("\n--- Verificación de propiedad ---")
+        print(out["propiedad"])
+        print(out["detalle_verificacion"])
+        input("\nPresiona ENTER para continuar...")
     except KeyboardInterrupt:
         print("\nOperación cancelada por el usuario.")
     except Exception as e:
         print(f"Error: {e}")
 
+
 def opP5_resta():
     try:
-        print("\n--- Programa 5: Resta de matrices ---")
+        print("\n--- Programa 5: Resta de matrices (con verificación de traspuestas) ---")
         m, n = leer_dimensiones("Dimensiones de A y B (m n): ")
         A = leer_matriz(m, n, "Matriz A:")
         B = leer_matriz(m, n, "Matriz B:")
         out = resta_matrices_explicada(A, B)
+
         print("\nInterpretación:", out["mensaje"])
         print("\n--- Pasos ---")
         for p in out["pasos"]:
             print(p)
+        print("\n--- Verificación de propiedad ---")
+        print(out["propiedad"])
+        print(out["detalle_verificacion"])
+        input("\nPresiona ENTER para continuar...")
     except KeyboardInterrupt:
         print("\nOperación cancelada por el usuario.")
     except Exception as e:
         print(f"Error: {e}")
 
+
 def opP5_escalar():
     try:
-        print("\n--- Programa 5: Multiplicación de matriz por escalar ---")
+        print("\n--- Programa 5: Multiplicación por escalar (con verificación de traspuestas) ---")
         m, n = leer_dimensiones("Dimensiones de A (m n): ")
         A = leer_matriz(m, n, "Matriz A:")
         k = pedir_flotante("Escalar k: ")
         out = escalar_por_matriz_explicada(k, A)
+
         print("\nInterpretación:", out["mensaje"])
         print("\n--- Pasos ---")
         for p in out["pasos"]:
             print(p)
+        print("\n--- Verificación de propiedad ---")
+        print(out["propiedad"])
+        print(out["detalle_verificacion"])
+        input("\nPresiona ENTER para continuar...")
     except KeyboardInterrupt:
         print("\nOperación cancelada por el usuario.")
     except Exception as e:
         print(f"Error: {e}")
+
+
 
 def opP5_producto():
     try:

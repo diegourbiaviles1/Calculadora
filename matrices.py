@@ -1,9 +1,30 @@
 # Reemplaza/ajusta en matrices.py
 
 from utilidad import DEFAULT_EPS
+# === helpers necesarios ===
+def _transpose(M):
+    """Devuelve la traspuesta de M."""
+    if not M or not M[0]:
+        return []
+    m, n = len(M), len(M[0])
+    # columnas j se vuelven filas
+    return [[float(M[i][j]) for i in range(m)] for j in range(n)]
+
+def _eq_same_size(X, Y, tol=DEFAULT_EPS):
+    """Compara X e Y (mismo tamaño) con tolerancia numérica."""
+    if not X or not Y or not X[0] or not Y[0]:
+        return False
+    if len(X) != len(Y) or len(X[0]) != len(Y[0]):
+        return False
+    m, n = len(X), len(X[0])
+    for i in range(m):
+        for j in range(n):
+            if abs(float(X[i][j]) - float(Y[i][j])) > tol:
+                return False
+    return True
+
 
 def _format_rows_2dec(M):
-    # Formato “CalcX”: filas con números a 2 decimales, sin corchetes
     if not M: 
         return ""
     out = []
@@ -20,27 +41,42 @@ def suma_matrices_explicada(A, B, dec: int = 2):
     m, n = len(A), len(A[0])
     pasos = []
 
-    # Paso 1: mostrar matrices
     pasos.append(f"Paso 1 (Matrices de entrada):\nA:\n{_format_rows_2dec(A)}\nB:\n{_format_rows_2dec(B)}\n")
 
-    # Paso 2: cálculo elemento a elemento con detalle
+    # Suma normal C = A + B
     C = [[0.0]*n for _ in range(m)]
-    pasos.append("Paso 2 (Cálculo elemento a elemento):")
+    pasos.append("Paso 2 (Cálculo elemento a elemento de C=A+B):")
     for i in range(m):
         for j in range(n):
-            a_ij = float(A[i][j])
-            b_ij = float(B[i][j])
+            a_ij = float(A[i][j]); b_ij = float(B[i][j])
             C[i][j] = a_ij + b_ij
-            pasos.append(f"  c{i+1}{j+1} = {a_ij:.2f} + {b_ij:.2f} = {C[i][j]:.2f}")
+            pasos.append(f"  c{i+1}{j+1} = {a_ij:.{dec}f} + {b_ij:.{dec}f} = {C[i][j]:.{dec}f}")
 
-    # Paso 3: resultado final (matriz completa)
-    pasos.append(f"\nPaso 3 (Resultado):\n{_format_rows_2dec(C)}\n")
+    pasos.append(f"\nPaso 3 (Resultado C=A+B):\n{_format_rows_2dec(C)}\n")
+
+    # Verificación (A+B)^T = A^T + B^T
+    CT = _transpose(C)
+    AT = _transpose(A)
+    BT = _transpose(B)
+    S = [[AT[i][j] + BT[i][j] for j in range(len(AT[0]))] for i in range(len(AT))]
+
+    ver = []
+    ver.append("Verificación de propiedad: (A + B)^T = A^T + B^T")
+    ver.append("  (A+B)^T =")
+    ver.append(_format_rows_2dec(CT))
+    ver.append("  A^T + B^T =")
+    ver.append(_format_rows_2dec(S))
+    equivalentes = _eq_same_size(CT, S)
+    ver.append("  ¿Son iguales? → " + ("Sí, se cumple" if equivalentes else "No, no se cumple"))
 
     return {
         "ok": True,
         "C": C,
         "pasos": pasos,
-        "mensaje": "Suma realizada correctamente."
+        "mensaje": "Suma realizada correctamente.",
+        "propiedad": "(A + B)^T = A^T + B^T",
+        "equivalentes": equivalentes,
+        "detalle_verificacion": "\n".join(ver),
     }
 
 
@@ -54,17 +90,42 @@ def resta_matrices_explicada(A, B, dec: int = 2):
     pasos = []
     pasos.append(f"Paso 1 (Matrices de entrada):\nA:\n{_format_rows_2dec(A)}\nB:\n{_format_rows_2dec(B)}\n")
 
-    C = [[0.0]*n for _ in range(m)]
-    pasos.append("Paso 2 (Cálculo elemento a elemento):")
+    # Resta normal D = A − B
+    D = [[0.0]*n for _ in range(m)]
+    pasos.append("Paso 2 (Cálculo elemento a elemento de D=A−B):")
     for i in range(m):
         for j in range(n):
-            a_ij = float(A[i][j])
-            b_ij = float(B[i][j])
-            C[i][j] = a_ij - b_ij
-            pasos.append(f"  c{i+1}{j+1} = {a_ij:.{dec}f} - {b_ij:.{dec}f} = {C[i][j]:.{dec}f}")
+            a_ij = float(A[i][j]); b_ij = float(B[i][j])
+            D[i][j] = a_ij - b_ij
+            pasos.append(f"  d{i+1}{j+1} = {a_ij:.{dec}f} - {b_ij:.{dec}f} = {D[i][j]:.{dec}f}")
 
-    pasos.append(f"\nPaso 3 (Resultado):\n{_format_rows_2dec(C)}\n")
-    return {"ok": True, "C": C, "pasos": pasos, "mensaje": "Resta realizada correctamente."}
+    pasos.append(f"\nPaso 3 (Resultado D=A−B):\n{_format_rows_2dec(D)}\n")
+
+    # Verificación (A−B)^T = A^T − B^T
+    DT = _transpose(D)
+    AT = _transpose(A)
+    BT = _transpose(B)
+    R = [[AT[i][j] - BT[i][j] for j in range(len(AT[0]))] for i in range(len(AT))]
+
+    ver = []
+    ver.append("Verificación de propiedad: (A − B)^T = A^T − B^T")
+    ver.append("  (A−B)^T =")
+    ver.append(_format_rows_2dec(DT))
+    ver.append("  A^T − B^T =")
+    ver.append(_format_rows_2dec(R))
+    equivalentes = _eq_same_size(DT, R)
+    ver.append("  ¿Son iguales? → " + ("Sí, se cumple" if equivalentes else "No, no se cumple"))
+
+    return {
+        "ok": True,
+        "C": D,
+        "pasos": pasos,
+        "mensaje": "Resta realizada correctamente.",
+        "propiedad": "(A − B)^T = A^T − B^T",
+        "equivalentes": equivalentes,
+        "detalle_verificacion": "\n".join(ver),
+    }
+
 
 def escalar_por_matriz_explicada(k, A, dec: int = 2):
     if not A or not A[0]:
@@ -75,6 +136,7 @@ def escalar_por_matriz_explicada(k, A, dec: int = 2):
     pasos = []
     pasos.append(f"Paso 1 (Matriz de entrada):\nA:\n{_format_rows_2dec(A)}\n")
 
+    # kA
     B = [[0.0]*n for _ in range(m)]
     pasos.append(f"Paso 2 (Cálculo elemento a elemento): B = ({k:.{dec}f}) · A")
     for i in range(m):
@@ -83,8 +145,32 @@ def escalar_por_matriz_explicada(k, A, dec: int = 2):
             B[i][j] = k * a_ij
             pasos.append(f"  b{i+1}{j+1} = {k:.{dec}f} · {a_ij:.{dec}f} = {B[i][j]:.{dec}f}")
 
-    pasos.append(f"\nPaso 3 (Resultado):\n{_format_rows_2dec(B)}\n")
-    return {"ok": True, "B": B, "pasos": pasos, "mensaje": "Multiplicación por escalar realizada correctamente."}
+    pasos.append(f"\nPaso 3 (Resultado B=kA):\n{_format_rows_2dec(B)}\n")
+
+    # Verificación (kA)^T = k A^T
+    BT = _transpose(B)
+    AT = _transpose(A)
+    kAT = [[k * AT[i][j] for j in range(len(AT[0]))] for i in range(len(AT))]
+
+    ver = []
+    ver.append("Verificación de propiedad: (kA)^T = k A^T")
+    ver.append("  (kA)^T =")
+    ver.append(_format_rows_2dec(BT))
+    ver.append("  k·A^T =")
+    ver.append(_format_rows_2dec(kAT))
+    equivalentes = _eq_same_size(BT, kAT)
+    ver.append("  ¿Son iguales? → " + ("Sí, se cumple" if equivalentes else "No, no se cumple"))
+
+    return {
+        "ok": True,
+        "B": B,
+        "pasos": pasos,
+        "mensaje": "Multiplicación por escalar realizada correctamente.",
+        "propiedad": "(kA)^T = k A^T",
+        "equivalentes": equivalentes,
+        "detalle_verificacion": "\n".join(ver),
+    }
+
 
 def multiplicacion_matrices_explicada(A, B, dec: int = 2):
     if not A or not B or not A[0] or not B[0]:
