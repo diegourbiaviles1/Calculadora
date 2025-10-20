@@ -168,11 +168,13 @@ def btn(text):
     return b
 
 class LabeledEdit(QtWidgets.QWidget):
-    def __init__(self, label, placeholder="", parent=None):
+    def __init__(self, label, placeholder="", parent=None, default_value=""):
         super().__init__(parent)
         lay = QtWidgets.QHBoxLayout(self); lay.setContentsMargins(0,0,0,0)
         self.lbl = QtWidgets.QLabel(label)
         self.edit = QtWidgets.QLineEdit(); self.edit.setPlaceholderText(placeholder)
+        if default_value:
+            self.edit.setText(default_value)
         lay.addWidget(self.lbl); lay.addWidget(self.edit)
 
     def text(self): return self.edit.text().strip()
@@ -355,6 +357,32 @@ class MatrixTable(QtWidgets.QWidget):
                 row.append(_safe_float(t))
             A.append(row)
         return A
+    
+# --- NUEVO WIDGET para entrada de vectores ---
+class VectorInputTable(QtWidgets.QWidget):
+    """Un widget para introducir un vector en una tabla de una sola fila."""
+    def __init__(self, title: str, n_initial: int = 3, parent=None):
+        super().__init__(parent)
+        layout = QtWidgets.QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0)
+        self.label = QtWidgets.QLabel(title)
+        self.table = QtWidgets.QTableWidget(1, n_initial)
+        self.table.setFixedHeight(55)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.label)
+        layout.addWidget(self.table)
+        self._refresh_headers()
+
+    def _refresh_headers(self):
+        self.table.setHorizontalHeaderLabels([f"v{j+1}" for j in range(self.table.columnCount())])
+        
+    def set_size(self, n: int):
+        if self.table.columnCount() != n:
+            self.table.setColumnCount(n)
+            self._refresh_headers()
+
+    def to_vector(self) -> list[float]:
+        return [_safe_float(self.table.item(0, j).text() if self.table.item(0, j) else "0") for j in range(self.table.columnCount())]
 
 # ===== Formateo de matrices para salida en texto =====
 def format_matrix_text(M, dec=DEFAULT_DEC) -> str:
@@ -519,51 +547,122 @@ class TabProg4(QtWidgets.QWidget):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
 
-        dims = QtWidgets.QHBoxLayout()
-        self.m_in = LabeledEdit("m:", "filas"); self.n_in = LabeledEdit("n:", "columnas")
-        self.btn_export = btn("Exportar pasos…")
-        dims.addWidget(self.m_in); dims.addWidget(self.n_in); dims.addStretch(1); dims.addWidget(self.btn_export)
-        mlay.addLayout(dims)
-
-        self.A = MatrixInput("Matriz A (m x n)")
-        self.b = MatrixInput("Vector b (m valores, misma línea o una por línea)", height=70)
-        mlay.addWidget(self.A); mlay.addWidget(self.b)
-
-        self.run = btn("Resolver Ax=b + Dependencia (A·c=0)")
-        mlay.addWidget(self.run)
-
-        self.out = OutputArea(); mlay.addWidget(self.out)
-        self.run.clicked.connect(self.on_run)
+        # --- Menú de selección de operación ---
+        top_bar = QtWidgets.QHBoxLayout()
+        self.op_selector = QtWidgets.QComboBox()
+        self.op_selector.addItems([
+            "Resolver Ax=b + Dependencia de columnas de A",
+            "Análisis de Dependencia Lineal (de un conjunto de vectores)"
+        ])
+        self.btn_export = btn("Exportar resultados...")
+        top_bar.addWidget(QtWidgets.QLabel("Operación:"))
+        top_bar.addWidget(self.op_selector, 1)
+        top_bar.addWidget(self.btn_export)
+        mlay.addLayout(top_bar)
+        
+        # --- Contenedor de páginas (para cambiar entre operaciones) ---
+        self.stack = QtWidgets.QStackedWidget()
+        self.stack.addWidget(self._create_axb_page())
+        self.stack.addWidget(self._create_dependencia_page())
+        mlay.addWidget(self.stack)
+        
+        self.out = OutputArea()
+        mlay.addWidget(self.out)
+        
+        self.op_selector.currentIndexChanged.connect(self.stack.setCurrentIndex)
         self.btn_export.clicked.connect(lambda: save_text_to_file(self, self.out.toPlainText(), "programa4.txt"))
 
-    def on_run(self):
+    def _create_axb_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.m_in_axb = LabeledEdit("m (filas):", "3", default_value="3")
+        self.n_in_axb = LabeledEdit("n (columnas):", "3", default_value="3")
+        dims.addWidget(self.m_in_axb)
+        dims.addWidget(self.n_in_axb)
+        layout.addLayout(dims)
+        
+        self.A_table_axb = MatrixTable(title="Matriz A (m x n)")
+        self.b_input_axb = VectorInputTable("Vector b (m valores)", n_initial=3)
+        layout.addWidget(self.A_table_axb)
+        layout.addWidget(self.b_input_axb)
+        
+        run_btn = btn("Resolver Sistema y Analizar Dependencia de A")
+        run_btn.clicked.connect(self.on_run_axb)
+        layout.addWidget(run_btn)
+        
+        self.m_in_axb.edit.textChanged.connect(self._sync_axb)
+        self.n_in_axb.edit.textChanged.connect(self._sync_axb)
+        self._sync_axb()
+        return page
+
+    def _sync_axb(self):
         try:
-            m = int(self.m_in.text()); n = int(self.n_in.text())
-            A = parse_matrix(self.A.text(), m, n)
-            b_vals = parse_nums(self.b.text().replace("\n", " "))
-            if len(b_vals) != m:
-                raise ValueError(f"b debe tener {m} valores.")
+            m, n = int(self.m_in_axb.text()), int(self.n_in_axb.text())
+            self.A_table_axb.set_size(m, n)
+            self.b_input_axb.set_size(m)
+        except ValueError: pass
+
+    def _create_dependencia_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.k_in_dep = LabeledEdit("k (n° vectores):", "3", default_value="3")
+        self.n_in_dep = LabeledEdit("n (dimensión):", "3", default_value="3")
+        dims.addWidget(self.k_in_dep)
+        dims.addWidget(self.n_in_dep)
+        layout.addLayout(dims)
+        
+        self.V_table_dep = MatrixTable(title="Lista de Vectores v₁..vₖ (k filas, n columnas)")
+        layout.addWidget(self.V_table_dep)
+        
+        run_btn = btn("Analizar Dependencia Lineal de los Vectores")
+        run_btn.clicked.connect(self.on_run_dependencia)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        
+        self.k_in_dep.edit.textChanged.connect(self._sync_dep)
+        self.n_in_dep.edit.textChanged.connect(self._sync_dep)
+        self._sync_dep()
+        return page
+
+    def _sync_dep(self):
+        try:
+            k, n = int(self.k_in_dep.text()), int(self.n_in_dep.text())
+            self.V_table_dep.set_size(k, n)
+        except ValueError: pass
+
+    def on_run_axb(self):
+        try:
+            A = self.A_table_axb.to_matrix()
+            b_vals = self.b_input_axb.to_vector()
             info = resolver_sistema_homogeneo_y_no_homogeneo(A, b_vals)
-
-            lines = []
-            lines.append("=== PASOS (Gauss-Jordan aplicado a Ax = b) ===")
-            for p in info.get("pasos", []): lines.append(p)
-            lines.append("\n=== SOLUCIÓN GENERAL (forma paramétrica) ===")
-            lines.append(info["salida_parametrica"])
-            lines.append("\n=== CONCLUSIÓN DEL SISTEMA ===")
-            lines.append(info["conclusion"])
-
+            
+            lines = ["=== PASOS (Gauss-Jordan aplicado a Ax = b) ==="] + info.get("pasos", [])
+            lines += ["\n=== SOLUCIÓN GENERAL (forma paramétrica) ===", info["salida_parametrica"]]
+            lines += ["\n=== CONCLUSIÓN DEL SISTEMA ===", info["conclusion"]]
+            
             dep = resolver_dependencia_lineal_con_homogeneo(A)
-            lines.append("\n\n=== ANÁLISIS DE DEPENDENCIA LINEAL ===")
-            lines.append(dep.get("dependencia", "(sin análisis)"))
-            lines.append("\n=== PASOS (Gauss-Jordan aplicado a A·c = 0) ===")
-            for p in dep.get("pasos", []): lines.append(p)
-            lines.append("\n=== COMBINACIÓN LINEAL (forma paramétrica de los coeficientes c) ===")
-            lines.append(dep.get("salida_parametrica", ""))
-
+            lines += ["\n\n=== ANÁLISIS DE DEPENDENCIA LINEAL (Columnas de A) ===", dep.get("dependencia", "(sin análisis)")]
+            lines += ["\n=== PASOS (Gauss-Jordan aplicado a A·c = 0) ==="] + dep.get("pasos", [])
+            lines += ["\n=== COMBINACIÓN LINEAL (forma paramétrica de los coeficientes c) ===", dep.get("salida_parametrica", "")]
             self.out.clear_and_write("\n".join(lines))
         except Exception as e:
-            self.out.clear_and_write("Error: " + str(e))
+            self.out.clear_and_write(f"Error: {e}")
+
+    def on_run_dependencia(self):
+        try:
+            V = self.V_table_dep.to_matrix()
+            # La función analizar_dependencia espera una lista de vectores columna.
+            # La tabla los introduce por filas, así que la usamos directamente
+            # asumiendo que el usuario introduce los vectores que quiere analizar.
+            info = analizar_dependencia(V)
+            lines = ["=== Conclusión ===", info["mensaje"]]
+            lines += ["\n=== Pasos (Gauss-Jordan sobre A·c = 0, donde las columnas de A son los vectores vᵢ) ===\n"] + [p + "\n" for p in info["pasos"]]
+            lines += ["\n=== Coeficientes 'c' para la combinación lineal nula ===", info["salida_parametrica"]]
+            self.out.clear_and_write("\n".join(lines))
+        except Exception as e:
+            self.out.clear_and_write(f"Error: {e}")
 
 class TabAXeqB(QtWidgets.QWidget):
     """Resolver AX=B (B vector o matriz)."""
@@ -572,72 +671,60 @@ class TabAXeqB(QtWidgets.QWidget):
         mlay = QtWidgets.QVBoxLayout(self)
 
         dims = QtWidgets.QHBoxLayout()
-        self.m_in = LabeledEdit("m:", "filas")
-        self.n_in = LabeledEdit("n:", "columnas")
-        dims.addWidget(self.m_in); dims.addWidget(self.n_in)
+        self.m_in = LabeledEdit("m (filas):", "3", default_value="3")
+        self.n_in = LabeledEdit("n (columnas):", "3", default_value="3")
+        dims.addWidget(self.m_in)
+        dims.addWidget(self.n_in)
         mlay.addLayout(dims)
 
-        self.A = MatrixAugTable()
-        mlay.addWidget(self.A)
+        self.A_table = MatrixTable(title="Matriz A (m x n)")
+        self.b_input = VectorInputTable("Vector b (m valores)", n_initial=3)
+        mlay.addWidget(self.A_table)
+        mlay.addWidget(self.b_input)
 
-        self.b = MatrixInput("Vector b (m valores en una sola línea)")
-        self.b.txt.setPlaceholderText("Ej.: 1 2 3")
-        mlay.addWidget(self.b)
-
-        self.lbl_vector = QtWidgets.QLabel("X = ")
-        self.vector_x = QtWidgets.QLabel("")
-        mlay.addWidget(self.lbl_vector)
-        mlay.addWidget(self.vector_x)
-
-        self.run = btn("Resolver AX=B")
+        self.run = btn("Resolver AX = b")
         mlay.addWidget(self.run)
 
-        self.out = OutputArea(); mlay.addWidget(self.out)
+        self.out = OutputArea()
+        mlay.addWidget(self.out)
         self.run.clicked.connect(self.on_run)
 
-        self.m_in.edit.textChanged.connect(self._sync_dims_to_table)
-        self.n_in.edit.textChanged.connect(self._sync_dims_to_table)
+        self.m_in.edit.textChanged.connect(self._sync_dims)
+        self.n_in.edit.textChanged.connect(self._sync_dims)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self, activated=self.on_run)
-        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self, activated=self.on_run)
+        
+        self._sync_dims()
 
-        self._sync_dims_to_table()
-
-    def _sync_dims_to_table(self):
+    def _sync_dims(self):
         try:
             m = int(self.m_in.text())
             n = int(self.n_in.text())
-            self.A.set_size(m, n)
-            self.A._refresh_headers()
-            self.A.fill_zeros()
-            self._update_vector_x()
-        except Exception:
+            self.A_table.set_size(m, n)
+            self.b_input.set_size(m)
+        except ValueError:
             pass
-
-    def _update_vector_x(self):
-        try:
-            n = int(self.n_in.text())
-            vector_str = "[" + "  ".join([f"x{j+1}" for j in range(n)]) + "]"
-            self.vector_x.setText(vector_str)
-        except Exception:
-            self.vector_x.setText("")
 
     def on_run(self):
         try:
-            m = int(self.m_in.text()); n = int(self.n_in.text())
-            A = parse_matrix(self.A.to_text(), m, n)
-            b_vals = parse_vector(self.b.text(), m)
+            A = self.A_table.to_matrix()
+            b_vals = self.b_input.to_vector()
+            
             out = resolver_AX_igual_B(A, b_vals)
             lines = []
+            lines.append("--- Procedimiento de Gauss-Jordan ---")
             for p in out.get("reportes", []): lines.append(p)
+            
+            lines.append("\n--- Resultado ---")
             if out.get("estado") == "ok":
                 if "x" in out:
-                    lines.append("\nx = " + str(out["x"]))
+                    lines.append("Solución única encontrada:")
+                    lines.append("x = " + str(out["x"]))
                 if "X" in out:
-                    lines.append("\nX =")
-                    for fila in out["X"]:
-                        lines.append("  " + "  ".join(fmt_number(x, DEFAULT_DEC, False) for x in fila))
+                    lines.append("Matriz solución X encontrada:")
+                    lines.append(format_matrix_text(out["X"]))
             else:
-                lines.append("\nEstado: " + str(out.get("estado")))
+                lines.append("Estado del sistema: " + str(out.get("estado")))
+                lines.append("No se encontró una solución única.")
             self.out.clear_and_write("\n".join(lines))
         except Exception as e:
             self.out.clear_and_write("Error: " + str(e))
@@ -647,65 +734,205 @@ class TabVectores(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
+        
+        # --- Menú de selección de operación ---
+        top_bar = QtWidgets.QHBoxLayout()
+        self.op_selector = QtWidgets.QComboBox()
+        self.op_selector.addItems([
+            "1) Verificar propiedades en Rⁿ",
+            "2) Verificar distributiva A(u+v) = Au+Av",
+            "3) Combinación lineal de vectores",
+            "4) Ecuación vectorial (¿b en span{v₁..vₖ}?)"
+        ])
+        top_bar.addWidget(QtWidgets.QLabel("Seleccione una operación:"))
+        top_bar.addWidget(self.op_selector, 1)
+        mlay.addLayout(top_bar)
+        
+        # --- Contenedor de páginas ---
+        self.stack = QtWidgets.QStackedWidget()
+        self.stack.addWidget(self._create_prop_rn_page())
+        self.stack.addWidget(self._create_distributiva_page())
+        self.stack.addWidget(self._create_comb_lineal_page())
+        self.stack.addWidget(self._create_ecu_vec_page())
+        mlay.addWidget(self.stack)
+        
+        self.out = OutputArea()
+        mlay.addWidget(self.out)
+        
+        self.op_selector.currentIndexChanged.connect(self.stack.setCurrentIndex)
+    
+    # --- Página 1: Propiedades en R^n ---
+    def _create_prop_rn_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        self.n_in_prn = LabeledEdit("Dimensión n:", "3", default_value="3")
+        self.v_in_prn = VectorInputTable("Vector v", 3)
+        self.u_in_prn = VectorInputTable("Vector u", 3)
+        self.w_in_prn = VectorInputTable("Vector w", 3)
+        scalars_layout = QtWidgets.QHBoxLayout()
+        self.a_in_prn = LabeledEdit("Escalar a:", "1.5", default_value="1.5")
+        self.b_in_prn = LabeledEdit("Escalar b:", "-2", default_value="-2")
+        scalars_layout.addWidget(self.a_in_prn)
+        scalars_layout.addWidget(self.b_in_prn)
+        run_btn = btn("Verificar Propiedades")
+        run_btn.clicked.connect(self.on_run_prop_rn)
+        layout.addWidget(self.n_in_prn)
+        layout.addWidget(self.v_in_prn)
+        layout.addWidget(self.u_in_prn)
+        layout.addWidget(self.w_in_prn)
+        layout.addLayout(scalars_layout)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        self.n_in_prn.edit.textChanged.connect(self._sync_prop_rn)
+        self._sync_prop_rn()
+        return page
 
-        group1 = QtWidgets.QGroupBox("Ecuación vectorial  (¿b en span{v1..vk}?)")
-        g1 = QtWidgets.QVBoxLayout(group1)
-        dims1 = QtWidgets.QHBoxLayout()
-        self.k1 = LabeledEdit("k:", "n° vectores")
-        self.n1 = LabeledEdit("n:", "dimensión")
-        dims1.addWidget(self.k1); dims1.addWidget(self.n1)
-        g1.addLayout(dims1)
-        self.V1 = MatrixInput("Lista de vectores (uno por línea, n valores)")
-        self.b1 = MatrixInput("b (n valores en una línea o multilinea)", height=60)
-        self.btn1 = btn("Resolver ecuación vectorial")
-        g1.addWidget(self.V1); g1.addWidget(self.b1); g1.addWidget(self.btn1)
-        mlay.addWidget(group1)
-
-        group2 = QtWidgets.QGroupBox("Combinación lineal de vectores")
-        g2 = QtWidgets.QVBoxLayout(group2)
-        dims2 = QtWidgets.QHBoxLayout()
-        self.k2 = LabeledEdit("k:", "n° vectores")
-        self.n2 = LabeledEdit("n:", "dimensión")
-        dims2.addWidget(self.k2); dims2.addWidget(self.n2)
-        g2.addLayout(dims2)
-        self.V2 = MatrixInput("Lista de vectores (uno por línea, n valores)")
-        self.c2 = MatrixInput("Coeficientes (k valores en una línea)", height=60)
-        self.btn2 = btn("Calcular combinación")
-        g2.addWidget(self.V2); g2.addWidget(self.c2); g2.addWidget(self.btn2)
-        mlay.addWidget(group2)
-
-        self.out = OutputArea(); mlay.addWidget(self.out)
-
-        self.btn1.clicked.connect(self.on_ecuacion)
-        self.btn2.clicked.connect(self.on_comb)
-
-    def on_ecuacion(self):
+    def _sync_prop_rn(self):
         try:
-            k = int(self.k1.text()); n = int(self.n1.text())
-            V = parse_list_vectors(self.V1.text(), k, n)
-            bvals = parse_nums(self.b1.text().replace("\n", " "))
-            if len(bvals) != n: raise ValueError(f"b debe tener {n} valores.")
-            out = ecuacion_vectorial(V, bvals)
-            lines = []
-            for p in out.get("reportes", []): lines.append(p + "\n")
-            tipo = out.get("tipo") or out.get("estado")
-            lines.append("Estado: " + str(tipo))
-            lines.append("")
-            lines.append(formatear_solucion_parametrica(out, nombres_vars=None, dec=4, fracciones=True))
+            n = int(self.n_in_prn.text())
+            self.v_in_prn.set_size(n)
+            self.u_in_prn.set_size(n)
+            self.w_in_prn.set_size(n)
+        except ValueError: pass
+
+    def on_run_prop_rn(self):
+        try:
+            v = self.v_in_prn.to_vector()
+            u = self.u_in_prn.to_vector()
+            w = self.w_in_prn.to_vector()
+            a = float(evaluar_expresion(self.a_in_prn.text()))
+            b = float(evaluar_expresion(self.b_in_prn.text()))
+            res = verificar_propiedades(v, u, w, a, b)
+            lines = ["--- Verificación de Propiedades ---"]
+            for k, val in res.items():
+                lines.append(f"{k.replace('_', ' '):<20}: {'✔️ Cumplida' if val else '❌ No Cumplida'}")
             self.out.clear_and_write("\n".join(lines))
         except Exception as e:
-            self.out.clear_and_write("Error: " + str(e))
+            self.out.clear_and_write(f"Error: {e}")
 
-    def on_comb(self):
+    # --- Página 2: Distributiva ---
+    def _create_distributiva_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.m_in_dist = LabeledEdit("Filas de A (m):", "2", default_value="2")
+        self.n_in_dist = LabeledEdit("Columnas de A (n):", "3", default_value="3")
+        dims.addWidget(self.m_in_dist)
+        dims.addWidget(self.n_in_dist)
+        self.A_in_dist = MatrixTable(2, 3, "Matriz A")
+        self.u_in_dist = VectorInputTable("Vector u (tamaño n)", 3)
+        self.v_in_dist = VectorInputTable("Vector v (tamaño n)", 3)
+        run_btn = btn("Verificar Propiedad Distributiva")
+        run_btn.clicked.connect(self.on_run_distributiva)
+        layout.addLayout(dims)
+        layout.addWidget(self.A_in_dist)
+        layout.addWidget(self.u_in_dist)
+        layout.addWidget(self.v_in_dist)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        self.m_in_dist.edit.textChanged.connect(self._sync_dist)
+        self.n_in_dist.edit.textChanged.connect(self._sync_dist)
+        self._sync_dist()
+        return page
+
+    def _sync_dist(self):
         try:
-            k = int(self.k2.text()); n = int(self.n2.text())
-            V = parse_list_vectors(self.V2.text(), k, n)
-            coef = parse_nums(self.c2.text().replace("\n", " "))
-            if len(coef) != k: raise ValueError(f"Se esperaban {k} coeficientes.")
-            out = combinacion_lineal_explicada(V, coef, dec=4)
-            self.out.clear_and_write(out["texto"] + "\n\nComo lista: " + str(out["resultado"]))
+            m, n = int(self.m_in_dist.text()), int(self.n_in_dist.text())
+            self.A_in_dist.set_size(m, n)
+            self.u_in_dist.set_size(n)
+            self.v_in_dist.set_size(n)
+        except ValueError: pass
+
+    def on_run_distributiva(self):
+        try:
+            A = self.A_in_dist.to_matrix()
+            u = self.u_in_dist.to_vector()
+            v = self.v_in_dist.to_vector()
+            out = verificar_distributiva_matriz(A, u, v)
+            self.out.clear_and_write("\n".join(out["pasos"]))
         except Exception as e:
-            self.out.clear_and_write("Error: " + str(e))
+            self.out.clear_and_write(f"Error: {e}")
+
+    # --- Página 3: Combinación Lineal ---
+    def _create_comb_lineal_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.k_in_cl = LabeledEdit("k (n° vectores):", "2", default_value="2")
+        self.n_in_cl = LabeledEdit("n (dimensión):", "3", default_value="3")
+        dims.addWidget(self.k_in_cl)
+        dims.addWidget(self.n_in_cl)
+        self.V_in_cl = MatrixTable(2, 3, "Lista de vectores v₁..vₖ (k filas, n columnas)")
+        self.c_in_cl = VectorInputTable("Coeficientes c (k valores)", 2)
+        run_btn = btn("Calcular Combinación")
+        run_btn.clicked.connect(self.on_run_comb_lineal)
+        layout.addLayout(dims)
+        layout.addWidget(self.V_in_cl)
+        layout.addWidget(self.c_in_cl)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        self.k_in_cl.edit.textChanged.connect(self._sync_cl)
+        self.n_in_cl.edit.textChanged.connect(self._sync_cl)
+        self._sync_cl()
+        return page
+
+    def _sync_cl(self):
+        try:
+            k, n = int(self.k_in_cl.text()), int(self.n_in_cl.text())
+            self.V_in_cl.set_size(k, n)
+            self.c_in_cl.set_size(k)
+        except ValueError: pass
+
+    def on_run_comb_lineal(self):
+        try:
+            V = self.V_in_cl.to_matrix()
+            coef = self.c_in_cl.to_vector()
+            out = combinacion_lineal_explicada(V, coef, dec=4)
+            self.out.clear_and_write(f"{out['texto']}\n\nComo lista: {out['resultado']}")
+        except Exception as e:
+            self.out.clear_and_write(f"Error: {e}")
+
+    # --- Página 4: Ecuación Vectorial ---
+    def _create_ecu_vec_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.k_in_ev = LabeledEdit("k (n° vectores):", "2", default_value="2")
+        self.n_in_ev = LabeledEdit("n (dimensión):", "3", default_value="3")
+        dims.addWidget(self.k_in_ev)
+        dims.addWidget(self.n_in_ev)
+        self.V_in_ev = MatrixTable(2, 3, "Lista de vectores v₁..vₖ (k filas, n columnas)")
+        self.b_in_ev = VectorInputTable("Vector b (n valores)", 3)
+        run_btn = btn("Resolver Ecuación Vectorial")
+        run_btn.clicked.connect(self.on_run_ecu_vec)
+        layout.addLayout(dims)
+        layout.addWidget(self.V_in_ev)
+        layout.addWidget(self.b_in_ev)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        self.k_in_ev.edit.textChanged.connect(self._sync_ev)
+        self.n_in_ev.edit.textChanged.connect(self._sync_ev)
+        self._sync_ev()
+        return page
+
+    def _sync_ev(self):
+        try:
+            k, n = int(self.k_in_ev.text()), int(self.n_in_ev.text())
+            self.V_in_ev.set_size(k, n)
+            self.b_in_ev.set_size(n)
+        except ValueError: pass
+
+    def on_run_ecu_vec(self):
+        try:
+            V = self.V_in_ev.to_matrix()
+            bvals = self.b_in_ev.to_vector()
+            out = ecuacion_vectorial(V, bvals)
+            lines = [p + "\n" for p in out.get("reportes", [])]
+            lines.append(f"Estado: {out.get('tipo') or out.get('estado')}\n")
+            lines.append(formatear_solucion_parametrica(out, dec=4, fracciones=True))
+            self.out.clear_and_write("\n".join(lines))
+        except Exception as e:
+            self.out.clear_and_write(f"Error: {e}")
 
 # =========================
 #   Programa 5 (Matrices) — con cálculo elemento a elemento
@@ -1060,11 +1287,16 @@ class TabProg6(QtWidgets.QWidget):
             # Panel derecho: propiedades y justificación
             lines = []
             lines += ["=== Propiedades (c)(d)(e) ===", ""]
-            lines += [f"Pivotes (1-index): {props.get('pivotes')}",
-                      f"Rango: {props.get('rango')}",
-                      f"Columnas libres (1-index): {props.get('libres')}", ""]
-            lines += ["--- Resumen ---", props.get("explicacion",""), ""]
-            lines += ["--- Justificación ---", props.get("explicacion_detallada","")]
+            # --- CORREGIDO: El diccionario de propiedades no tiene 'libres' o 'explicacion_detallada' directamente ---
+            lines += [f"Pivotes (1-index): {props.get('pivotes', 'N/A')}",
+                      f"Rango: {props.get('rango', 'N/A')}", ""]
+            lines += [props.get("explicacion", "No se pudo generar la explicación.")]
+            
+            # Opcional: Mostrar detalles del sistema homogéneo si están disponibles
+            if props.get("detalle_sistema_homogeneo"):
+                lines.append("\n--- Detalles del sistema homogéneo Ax=0 ---")
+                lines.append(formatear_solucion_parametrica(props["detalle_sistema_homogeneo"]))
+                
             self.summary.clear_and_write("\n".join(lines))
 
             # Panel inferior: no se corre Gauss–Jordan aquí
@@ -1088,7 +1320,6 @@ class TabProg6(QtWidgets.QWidget):
             if inv.get("estado") == "ok":
                 lines += ["", "A^{-1} =", format_matrix_text(inv["Ainv"])]
             lines += ["", "--- Propiedades (c)(d)(e) ---", props.get("explicacion",""), ""]
-            lines += ["--- Justificación ---", props.get("explicacion_detallada",""), ""]
             lines += ["Conclusión global:", full.get("conclusion_global","")]
             self.summary.clear_and_write("\n".join(lines))
 
