@@ -1,4 +1,4 @@
-# app_gui.py — GUI PyQt6 completa para tu proyecto (con cálculo elemento a elemento)
+# app_gui.py — GUI PyQt6 completa (incluye Programa 6: Inversa por Gauss–Jordan)
 from __future__ import annotations
 from typing import List
 import sys
@@ -26,6 +26,13 @@ from matrices import (
     producto_escalar_explicado,
     producto_matrices_explicado,
     traspuesta_explicada,
+)
+
+# ====== Programa 6 (Inversa) ======
+from inversa import (
+    inversa_por_gauss_jordan,
+    verificar_propiedades_invertibilidad,
+    programa_inversa_con_propiedades,
 )
 
 # =========================
@@ -79,13 +86,8 @@ def parse_list_vectors(text: str, k: int, n: int) -> List[List[float]]:
     return out
 
 def pretty_augmented_from_table(table: "MatrixAugTable", dec: int = 4) -> str:
-    """
-    Devuelve un bloque de texto con la matriz aumentada centrada y un solo par de corchetes grandes.
-    Usa ⎡ ⎤ / ⎢ ⎥ / ⎣ ⎦ y alinea columnas según el ancho máximo de cada una.
-    """
     m = table.table.rowCount()
     n = table.table.columnCount() - 1
-    # Leer como cadenas
     grid = []
     for i in range(m):
         row = []
@@ -93,20 +95,14 @@ def pretty_augmented_from_table(table: "MatrixAugTable", dec: int = 4) -> str:
             it = table.table.item(i, j)
             row.append((it.text() if it else "0").strip())
         grid.append(row)
-
-    # Ancho máximo por columna (incluye b)
     widths = [0] * (n + 1)
     for j in range(n + 1):
         widths[j] = max(len(grid[i][j]) if grid[i][j] else 1 for i in range(m))
-
-    # Construir filas con padding; separador antes de b
     rows_txt = []
     for i in range(m):
         left = "  ".join(grid[i][j].rjust(widths[j]) for j in range(n))
         right = grid[i][n].rjust(widths[n])
         rows_txt.append(f"{left}  |  {right}" if n > 0 else right)
-
-    # Corchetes grandes
     L = ["⎡", "⎢", "⎣"]
     R = ["⎤", "⎥", "⎦"]
     out = []
@@ -425,7 +421,7 @@ def explain_AB(A, B):
     return lines
 
 # =========================
-#   Pestañas de la app
+#   Pestañas existentes
 # =========================
 class TabGaussJordan(QtWidgets.QWidget):
     """Resolver por Gauss–Jordan a partir de matriz aumentada (tabla a la izquierda, vista inicial a la derecha)."""
@@ -433,19 +429,16 @@ class TabGaussJordan(QtWidgets.QWidget):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
 
-        # --- Grupo superior: mitad tabla / mitad vista ---
         self.group = QtWidgets.QGroupBox("Tamaño de la matriz")
         gl = QtWidgets.QVBoxLayout(self.group)
 
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
 
-        # izquierda: editor de Ab
         left = QtWidgets.QWidget()
         left_lay = QtWidgets.QVBoxLayout(left); left_lay.setContentsMargins(0,0,0,0)
         self.aug_table = MatrixAugTable()
         left_lay.addWidget(self.aug_table)
 
-        # derecha: vista de la matriz aumentada inicial
         right = QtWidgets.QWidget()
         right_lay = QtWidgets.QVBoxLayout(right); right_lay.setContentsMargins(6,0,0,0)
         self.lbl_preview = QtWidgets.QLabel("Matriz aumentada inicial")
@@ -463,7 +456,6 @@ class TabGaussJordan(QtWidgets.QWidget):
         gl.addWidget(splitter)
         mlay.addWidget(self.group)
 
-        # Barra de botones
         btn_bar = QtWidgets.QHBoxLayout()
         self.btn_zeros = QtWidgets.QPushButton("Rellenar ceros")
         self.btn_clear = QtWidgets.QPushButton("Limpiar")
@@ -475,16 +467,13 @@ class TabGaussJordan(QtWidgets.QWidget):
         btn_bar.addStretch(1)
         gl.addLayout(btn_bar)
 
-        # Título de procedimiento
         self.lbl_procedimiento = QtWidgets.QLabel("Procedimiento (reducción por filas)")
         self.lbl_procedimiento.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
         mlay.addWidget(self.lbl_procedimiento)
 
-        # Salida
         self.out = OutputArea()
         mlay.addWidget(self.out)
 
-        # conexiones
         self.btn_zeros.clicked.connect(self.aug_table.fill_zeros)
         self.btn_clear.clicked.connect(self.aug_table.clear_all)
         self.btn_solve.clicked.connect(self.on_run_table)
@@ -493,7 +482,6 @@ class TabGaussJordan(QtWidgets.QWidget):
         self.aug_table.spin_m.valueChanged.connect(lambda _: self.update_preview())
         self.aug_table.spin_n.valueChanged.connect(lambda _: self.update_preview())
 
-        # Atajos
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self, activated=self.on_run_table)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self, activated=self.on_run_table)
 
@@ -583,37 +571,30 @@ class TabAXeqB(QtWidgets.QWidget):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
 
-        # --- Fila superior: m n ---
         dims = QtWidgets.QHBoxLayout()
         self.m_in = LabeledEdit("m:", "filas")
         self.n_in = LabeledEdit("n:", "columnas")
         dims.addWidget(self.m_in); dims.addWidget(self.n_in)
         mlay.addLayout(dims)
 
-        # --- Entrada A (m x n) ---
         self.A = MatrixAugTable()
         mlay.addWidget(self.A)
 
-        # --- Entrada b como vector ---
         self.b = MatrixInput("Vector b (m valores en una sola línea)")
         self.b.txt.setPlaceholderText("Ej.: 1 2 3")
         mlay.addWidget(self.b)
 
-        # --- Mostrar el vector X ---
         self.lbl_vector = QtWidgets.QLabel("X = ")
         self.vector_x = QtWidgets.QLabel("")
         mlay.addWidget(self.lbl_vector)
         mlay.addWidget(self.vector_x)
 
-        # --- Botón de resolver ---
         self.run = btn("Resolver AX=B")
         mlay.addWidget(self.run)
 
-        # --- Salida ---
         self.out = OutputArea(); mlay.addWidget(self.out)
         self.run.clicked.connect(self.on_run)
 
-        # sincronización / atajos
         self.m_in.edit.textChanged.connect(self._sync_dims_to_table)
         self.n_in.edit.textChanged.connect(self._sync_dims_to_table)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self, activated=self.on_run)
@@ -667,7 +648,6 @@ class TabVectores(QtWidgets.QWidget):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
 
-        # Ecuación vectorial
         group1 = QtWidgets.QGroupBox("Ecuación vectorial  (¿b en span{v1..vk}?)")
         g1 = QtWidgets.QVBoxLayout(group1)
         dims1 = QtWidgets.QHBoxLayout()
@@ -681,7 +661,6 @@ class TabVectores(QtWidgets.QWidget):
         g1.addWidget(self.V1); g1.addWidget(self.b1); g1.addWidget(self.btn1)
         mlay.addWidget(group1)
 
-        # Combinación lineal
         group2 = QtWidgets.QGroupBox("Combinación lineal de vectores")
         g2 = QtWidgets.QVBoxLayout(group2)
         dims2 = QtWidgets.QHBoxLayout()
@@ -729,7 +708,7 @@ class TabVectores(QtWidgets.QWidget):
             self.out.clear_and_write("Error: " + str(e))
 
 # =========================
-#   Programa 5 (Matrices y traspuesta) — con cálculo elemento a elemento
+#   Programa 5 (Matrices) — con cálculo elemento a elemento
 # =========================
 class TabProg5(QtWidgets.QWidget):
     """Programa 5 — Operaciones con matrices y verificación de propiedades de la traspuesta."""
@@ -737,21 +716,17 @@ class TabProg5(QtWidgets.QWidget):
         super().__init__(parent)
         main = QtWidgets.QVBoxLayout(self)
 
-        # --- fila superior: spinners de tamaño y escalar k ---
         top = QtWidgets.QHBoxLayout()
-        # A: m x n
         self.sp_m = QtWidgets.QSpinBox(); self.sp_m.setRange(1, 50); self.sp_m.setValue(2)
         self.sp_n = QtWidgets.QSpinBox(); self.sp_n.setRange(1, 50); self.sp_n.setValue(2)
         top.addWidget(QtWidgets.QLabel("A: m=")); top.addWidget(self.sp_m)
         top.addWidget(QtWidgets.QLabel(" n=")); top.addWidget(self.sp_n)
         top.addSpacing(16)
-        # B: r x p (r se sincroniza con n cuando sea útil)
         self.sp_r = QtWidgets.QSpinBox(); self.sp_r.setRange(1, 50); self.sp_r.setValue(2)
         self.sp_p = QtWidgets.QSpinBox(); self.sp_p.setRange(1, 50); self.sp_p.setValue(2)
         top.addWidget(QtWidgets.QLabel("B: m=")); top.addWidget(self.sp_r)
         top.addWidget(QtWidgets.QLabel(" n=")); top.addWidget(self.sp_p)
         top.addSpacing(16)
-        # k escalar
         self.k_edit = QtWidgets.QLineEdit("1")
         self.k_edit.setValidator(QtGui.QDoubleValidator())
         self.k_edit.setMaximumWidth(120)
@@ -759,13 +734,11 @@ class TabProg5(QtWidgets.QWidget):
         top.addStretch(1)
         main.addLayout(top)
 
-        # --- centro: tablas A y B al lado, salida a la derecha ---
         center = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
 
         left = QtWidgets.QWidget(); ll = QtWidgets.QVBoxLayout(left); ll.setContentsMargins(0,0,0,0)
         self.tblA = MatrixTable(2,2,"Matriz A")
         self.tblB = MatrixTable(2,2,"Matriz B")
-        # botones bajo A/B
         btnsAB = QtWidgets.QHBoxLayout()
         self.btn_fill = btn("Rellenar ceros")
         self.btn_clear = btn("Limpiar")
@@ -773,7 +746,6 @@ class TabProg5(QtWidgets.QWidget):
         ll.addWidget(self.tblA); ll.addWidget(self.tblB); ll.addLayout(btnsAB)
 
         right = QtWidgets.QWidget(); rl = QtWidgets.QVBoxLayout(right); rl.setContentsMargins(6,0,0,0)
-        # barra de operaciones
         ops = QtWidgets.QHBoxLayout()
         self.btn_sum = btn("A + B")
         self.btn_res = btn("A - B")
@@ -794,7 +766,6 @@ class TabProg5(QtWidgets.QWidget):
         center.setStretchFactor(1, 1)
         main.addWidget(center)
 
-        # conexiones
         self.sp_m.valueChanged.connect(self._sync_A)
         self.sp_n.valueChanged.connect(self._sync_A)
         self.sp_r.valueChanged.connect(self._sync_B)
@@ -808,15 +779,12 @@ class TabProg5(QtWidgets.QWidget):
         self.btn_AB.clicked.connect(self.on_AB)
         self.btn_AT.clicked.connect(self.on_AT)
 
-        # Atajos
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self, activated=self.on_sum)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self, activated=self.on_sum)
 
-        # sincronías
-        self.sp_n.valueChanged.connect(lambda v: self.sp_r.setValue(v))  # útil para A·B
+        self.sp_n.valueChanged.connect(lambda v: self.sp_r.setValue(v))
         self._sync_A(); self._sync_B()
 
-    # ---- sync y utilidades ----
     def _sync_A(self):
         self.tblA.set_size(self.sp_m.value(), self.sp_n.value())
 
@@ -836,7 +804,6 @@ class TabProg5(QtWidgets.QWidget):
     def _print(self, lines: list[str]):
         self.out.clear_and_write("\n".join(lines))
 
-    # ---- operaciones ----
     def on_sum(self):
         try:
             A = self.tblA.to_matrix()
@@ -982,20 +949,176 @@ class TabProg5(QtWidgets.QWidget):
             self._print(["Error:", str(e)])
 
 # =========================
+#   Programa 6 (Inversa: Gauss–Jordan + propiedades) — Mostrar TODO el procedimiento abajo
+# =========================
+class TabProg6(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        root = QtWidgets.QVBoxLayout(self)
+
+        # --- fila superior ---
+        top = QtWidgets.QHBoxLayout()
+        self.sp_n = QtWidgets.QSpinBox(); self.sp_n.setRange(1, 50); self.sp_n.setValue(2)
+        top.addWidget(QtWidgets.QLabel("n:")); top.addWidget(self.sp_n)
+        top.addStretch(1)
+        root.addLayout(top)
+
+        # --- centro: tabla (izq) + conclusiones (der) ---
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        left = QtWidgets.QWidget(); ll = QtWidgets.QVBoxLayout(left); ll.setContentsMargins(0,0,0,0)
+        self.tblA = MatrixTable(2, 2, "Matriz A (n×n)")
+        ll.addWidget(self.tblA)
+
+        right = QtWidgets.QWidget(); rl = QtWidgets.QVBoxLayout(right); rl.setContentsMargins(6,0,0,0)
+        self.summary = OutputArea()
+        rl.addWidget(self.summary)
+
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
+        root.addWidget(splitter)
+
+        # --- barra de acciones ---
+        actions = QtWidgets.QHBoxLayout()
+        self.btn_inv   = btn("Calcular A^{-1} y |A|")
+        self.btn_props = btn("Verificar propiedades (c)(d)(e)")
+        self.btn_all   = btn("Todo junto")
+        self.btn_clear = btn("Limpiar")
+        actions.addStretch(1)
+        for b in (self.btn_inv, self.btn_props, self.btn_all, self.btn_clear):
+            actions.addWidget(b)
+        actions.addStretch(1)
+        root.addLayout(actions)
+
+        # --- panel inferior: TODO el procedimiento Gauss–Jordan ---
+        self.steps_all = OutputArea()
+        self.steps_all.setPlaceholderText("Aquí se mostrará TODO el procedimiento de Gauss–Jordan sobre [A | I].")
+        root.addWidget(self.steps_all)
+
+        # conexiones / atajos
+        self.sp_n.valueChanged.connect(self._sync_n)
+        self.btn_clear.clicked.connect(self._clear_all)
+        self.btn_inv.clicked.connect(self.on_inv)
+        self.btn_props.clicked.connect(self.on_props)
+        self.btn_all.clicked.connect(self.on_all)
+
+        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+I"), self, activated=self.on_inv)
+        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+P"), self, activated=self.on_props)
+        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+T"), self, activated=self.on_all)
+        QtGui.QShortcut(QtGui.QKeySequence("Esc"),   self, activated=self._clear_all)
+
+        self._sync_n()
+
+    # ---------- utilidades ----------
+    def _sync_n(self):
+        self.tblA.set_size(self.sp_n.value(), self.sp_n.value())
+
+    def _clear_all(self):
+        self.tblA.clear_all()
+        self.summary.clear_and_write("")
+        self.steps_all.clear_and_write("")
+
+    def _A(self):
+        n = self.sp_n.value()
+        A = self.tblA.to_matrix()
+        if len(A) != n or len(A[0]) != n:
+            raise ValueError("A debe ser cuadrada n×n.")
+        return A
+
+    # ---------- acciones ----------
+    def on_inv(self):
+        try:
+            A = self._A()
+            inv = inversa_por_gauss_jordan(A, dec=4)
+
+            # Panel derecho: conclusiones y resultados
+            lines = []
+            lines += ["=== Inversa por Gauss–Jordan ===", ""]
+            lines += ["Determinante:", inv.get("det_texto","|A| = (desconocido)"), ""]
+            lines += ["Conclusión:", inv.get("conclusion","")]
+            if inv.get("estado") == "ok":
+                lines += ["", "A^{-1} =", format_matrix_text(inv["Ainv"])]
+            self.summary.clear_and_write("\n".join(lines))
+
+            # Panel inferior: TODO el procedimiento (sin filtrar)
+            pasos = inv.get("pasos", [])
+            if pasos:
+                self.steps_all.clear_and_write("\n\n".join(pasos))
+            else:
+                self.steps_all.clear_and_write("(No se generaron pasos.)")
+
+        except Exception as e:
+            self.summary.clear_and_write("Error: " + str(e))
+            self.steps_all.clear_and_write("")
+
+    def on_props(self):
+        try:
+            A = self._A()
+            props = verificar_propiedades_invertibilidad(A, dec=4)
+
+            # Panel derecho: propiedades y justificación
+            lines = []
+            lines += ["=== Propiedades (c)(d)(e) ===", ""]
+            lines += [f"Pivotes (1-index): {props.get('pivotes')}",
+                      f"Rango: {props.get('rango')}",
+                      f"Columnas libres (1-index): {props.get('libres')}", ""]
+            lines += ["--- Resumen ---", props.get("explicacion",""), ""]
+            lines += ["--- Justificación ---", props.get("explicacion_detallada","")]
+            self.summary.clear_and_write("\n".join(lines))
+
+            # Panel inferior: no se corre Gauss–Jordan aquí
+            self.steps_all.clear_and_write("(Ejecuta 'Calcular A^{-1} y |A|' o 'Todo junto' para ver el procedimiento).")
+
+        except Exception as e:
+            self.summary.clear_and_write("Error: " + str(e))
+            self.steps_all.clear_and_write("")
+
+    def on_all(self):
+        try:
+            A = self._A()
+            full = programa_inversa_con_propiedades(A, dec=4)
+            inv, props = full["inversa"], full["propiedades"]
+
+            # Panel derecho: resumen integrado
+            lines = []
+            lines += ["=== Inversa + Propiedades ===", ""]
+            lines += ["Determinante:", inv.get("det_texto","|A| = (desconocido)"), ""]
+            lines += ["Conclusión (inversa):", inv.get("conclusion","")]
+            if inv.get("estado") == "ok":
+                lines += ["", "A^{-1} =", format_matrix_text(inv["Ainv"])]
+            lines += ["", "--- Propiedades (c)(d)(e) ---", props.get("explicacion",""), ""]
+            lines += ["--- Justificación ---", props.get("explicacion_detallada",""), ""]
+            lines += ["Conclusión global:", full.get("conclusion_global","")]
+            self.summary.clear_and_write("\n".join(lines))
+
+            # Panel inferior: TODO el procedimiento de Gauss–Jordan
+            pasos = inv.get("pasos", [])
+            if pasos:
+                self.steps_all.clear_and_write("\n\n".join(pasos))
+            else:
+                self.steps_all.clear_and_write("(No se generaron pasos.)")
+
+        except Exception as e:
+            self.summary.clear_and_write("Error: " + str(e))
+            self.steps_all.clear_and_write("")
+
+# =========================
 #   Ventana principal
 # =========================
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Álgebra Lineal — GUI (PyQt6)")
-        self.resize(1100, 780)
+        self.resize(1200, 820)
 
         tabs = QtWidgets.QTabWidget()
         tabs.addTab(TabGaussJordan(), "Gauss-Jordan (Ab)")
         tabs.addTab(TabAXeqB(), "AX=B")
         tabs.addTab(TabProg4(), "Programa 4")
         tabs.addTab(TabVectores(), "Vectores")
-        tabs.addTab(TabProg5(), "Programa 5 (Matrices)")   # << NUEVO
+        tabs.addTab(TabProg5(), "Operaciones con Matrices")
+        tabs.addTab(TabProg6(), "Inversa")   
 
         self.setCentralWidget(tabs)
         self.statusBar().showMessage("Listo")
