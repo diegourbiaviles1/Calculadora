@@ -1,15 +1,10 @@
-# main.py
-# Nota: Se mantiene el mismo formato de mensajes y menús.
-# Cambios clave: validaciones de entrada, manejo de excepciones, y
-# adecuación a las funciones/keys del módulo matrices.py.
 
 from utilidad import *
 from algebra_vector import *
 from sistema_lineal import SistemaLineal, formatear_solucion_parametrica
 from homogeneo import *
-from matrices import *  # suma_matrices_explicada, resta_matrices_explicada,
-                        # producto_escalar_explicado, producto_matrices_explicado,
-                        # traspuesta_explicada, verificar_propiedades_traspuesta
+from matrices import * 
+from inversa import *
 
 # ----------------- Helpers de entrada/validación -----------------
 def pedir_entero(msg, minimo=None, maximo=None):
@@ -29,9 +24,10 @@ def pedir_entero(msg, minimo=None, maximo=None):
 def pedir_flotante(msg):
     while True:
         try:
-            return float(input(msg))
-        except ValueError:
-            print("Entrada inválida: escribe un número (float).")
+            # Soporta expresiones como 1/3, -2^3, etc.
+            return float(evaluar_expresion(input(msg), exacto=False))
+        except Exception:
+            print("Entrada inválida: escribe un número o expresión (ej.: 1/3, -2^3).")
 
 def pedir_opcion(msg, opciones_validas):
     opciones_validas = [o.lower() for o in opciones_validas]
@@ -166,7 +162,8 @@ def op4_ax_igual_b():
             if "x" in out:
                 print("x =", out["x"])
             if "X" in out:
-                print("X =\n", out["X"])
+                print("X =")
+                print(formatear_matriz(out["X"], decimales=4))
         else:
             print("Estado:", out.get("estado"))
     except KeyboardInterrupt:
@@ -297,8 +294,14 @@ def opP5_suma():
         out = suma_matrices_explicada(A, B)
 
         print("\n--- Pasos ---")
-        for p in out["pasos"]:
+        for p in out.get("pasos", []):
             print(p)
+
+        # Soporta ambos contratos (con o sin 'estado')
+        if out.get("estado") and out.get("estado") != "ok":
+            print("\n>>>", out.get("conclusion", "Error en la suma."))
+            input("\nPresiona ENTER para continuar...")
+            return
 
         print("\nResultado C = A + B:")
         print(formatear_matriz(out["resultado"]))
@@ -327,8 +330,13 @@ def opP5_resta():
         out = resta_matrices_explicada(A, B)
 
         print("\n--- Pasos ---")
-        for p in out["pasos"]:
+        for p in out.get("pasos", []):
             print(p)
+
+        if out.get("estado") and out.get("estado") != "ok":
+            print("\n>>>", out.get("conclusion", "Error en la resta."))
+            input("\nPresiona ENTER para continuar...")
+            return
 
         print("\nResultado C = A - B:")
         print(formatear_matriz(out["resultado"]))
@@ -351,14 +359,19 @@ def opP5_escalar():
     try:
         print("\n--- Programa 5: Multiplicación por escalar (con verificación de traspuestas) ---")
         m, n = leer_dimensiones("Dimensiones de A (m n): ")
-        A = leer_matriz(m, n, "Matriz A:")
+        A = leer_matriz(m, n, "Matriz A: ")
         k = pedir_flotante("Escalar k: ")
 
         out = producto_escalar_explicado(k, A)
 
         print("\n--- Pasos ---")
-        for p in out["pasos"]:
+        for p in out.get("pasos", []):
             print(p)
+
+        if out.get("estado") and out.get("estado") != "ok":
+            print("\n>>>", out.get("conclusion", "Error en k·A."))
+            input("\nPresiona ENTER para continuar...")
+            return
 
         print("\nResultado k·A:")
         print(formatear_matriz(out["resultado"]))
@@ -382,15 +395,20 @@ def opP5_producto():
         A = leer_matriz(m, n, "Matriz A:")
         n2, p = leer_dimensiones("Dimensiones de B (n p): ")
         if n2 != n:
-            print("Error: Debe cumplirse columnas(A)=filas(B).")
+            print("Error: columnas(A) deben igualar filas(B). Ej.: A (m×n) y B (n×p).")
             return
         B = leer_matriz(n2, p, "Matriz B:")
 
         out = producto_matrices_explicado(A, B)
 
         print("\n--- Pasos ---")
-        for ptxt in out["pasos"]:
+        for ptxt in out.get("pasos", []):
             print(ptxt)
+
+        if out.get("estado") and out.get("estado") != "ok":
+            print("\n>>>", out.get("conclusion", "Error en A·B."))
+            input("\nPresiona ENTER para continuar...")
+            return
 
         print("\nResultado C = A·B:")
         print(formatear_matriz(out["resultado"]))
@@ -398,14 +416,10 @@ def opP5_producto():
         print(formatear_matriz(out["traspuesta_del_resultado"]))
         print("\nB^T:")
         print(formatear_matriz(out["BT"]))
-
         print("\nA^T:")
         print(formatear_matriz(out["AT"]))
-
         print("\nB^T·A^T:")
         print(formatear_matriz(out["BT_por_AT"]))
-
-
         print("\n>>>", out["conclusion"])
         input("\nPresiona ENTER para continuar...")
     except KeyboardInterrupt:
@@ -431,7 +445,7 @@ def opP5_traspuesta():
         # (A^T)^T = A
         base = traspuesta_explicada(A)
         print("\n--- Pasos (traspuesta de A) ---")
-        for p in base["pasos"]:
+        for p in base.get("pasos", []):
             print(p)
         print("\nA^T:")
         print(formatear_matriz(base["resultado"]))
@@ -478,6 +492,115 @@ def menu_programa5():
             opP5_producto()
         elif op == "5":
             opP5_traspuesta()
+        elif op == "b":
+            break
+
+# -------- Programa 6: Inversa de una matriz (Gauss–Jordan) --------
+def opP6_inversa():
+    try:
+        print("\n--- Programa 6: Inversa de A por Gauss–Jordan ---")
+        m, n = leer_dimensiones("Dimensiones de A (m n): ")
+        if m != n:
+            print("Error: A debe ser cuadrada para ser invertible.")
+            return
+        A = leer_matriz(m, n, "Matriz A:")
+
+        out = inversa_por_gauss_jordan(A, tol=DEFAULT_EPS, dec=4)
+
+        print("\n--- Pasos ---")
+        for p in out.get("pasos", []):
+            print(p)
+
+        print("\n>>>", out.get("conclusion", ""))
+        print(out.get("det_texto", ""))  # muestra como "|A| = ..."
+        if out.get("estado") == "ok":
+            print("\nA^{-1} =")
+            print(formatear_matriz(out["Ainv"], decimales=4))
+        input("\nPresiona ENTER para continuar...")
+    except KeyboardInterrupt:
+        print("\nOperación cancelada por el usuario.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def opP6_propiedades():
+    try:
+        print("\n--- Programa 6: Verificación teórica (c)(d)(e) ---")
+        m, n = leer_dimensiones("Dimensiones de A (m n): ")
+        if m != n:
+            print("Error: A debe ser cuadrada.")
+            return
+        A = leer_matriz(m, n, "Matriz A:")
+
+        props = verificar_propiedades_invertibilidad(A, tol=DEFAULT_EPS, dec=4)
+
+        print("\nPivotes (columnas 1-index):", props.get("pivotes"))
+        print("Rango:", props.get("rango"))
+        print("\n" + props.get("explicacion", ""))
+
+        # (Opcional docente) Mostrar forma paramétrica de Ax=0
+        info_h = props.get("detalle_sistema_homogeneo", {})
+        if info_h:
+            print("\n=== Forma paramétrica de Ax=0 ===")
+            print(info_h.get("salida_parametrica", ""))
+
+        input("\nPresiona ENTER para continuar...")
+    except KeyboardInterrupt:
+        print("\nOperación cancelada por el usuario.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def opP6_todo():
+    try:
+        print("\n--- Programa 6: Inversa + Propiedades (c)(d)(e) ---")
+        m, n = leer_dimensiones("Dimensiones de A (m n): ")
+        if m != n:
+            print("Error: A debe ser cuadrada.")
+            return
+        A = leer_matriz(m, n, "Matriz A:")
+
+        out = programa_inversa_con_propiedades(A, tol=DEFAULT_EPS, dec=4)
+
+        inv = out["inversa"]
+        props = out["propiedades"]
+
+        print("\n--- Pasos (Gauss–Jordan sobre [A|I]) ---")
+        for p in inv.get("pasos", []):
+            print(p)
+
+        print("\nDeterminante:")
+        print(inv.get("det_texto", ""))  # "|A| = ..."
+        print("\nConclusión (inversa):", inv.get("conclusion", ""))
+
+        if inv.get("estado") == "ok":
+            print("\nA^{-1} =")
+            print(formatear_matriz(inv["Ainv"], decimales=4))
+
+        print("\n--- Propiedades (c)(d)(e) ---")
+        print(props.get("explicacion", ""))
+
+        print("\nConclusión:")
+        print(out.get("conclusion_global", ""))
+
+        input("\nPresiona ENTER para continuar...")
+    except KeyboardInterrupt:
+        print("\nOperación cancelada por el usuario.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def menu_programa6():
+    while True:
+        print("\n--- Programa 6: Inversa de una matriz (Gauss–Jordan) ---")
+        print("1) Calcular A^{-1} y |A|")
+        print("2) Verificar propiedades (c)(d)(e)")
+        print("3) Ambos programas (A^{-1} + propiedades)")
+        print("b) Volver")
+        op = pedir_opcion("Opción: ", {"1","2","3","b"})
+        if op == "1":
+            opP6_inversa()
+        elif op == "2":
+            opP6_propiedades()
+        elif op == "3":
+            opP6_todo()
         elif op == "b":
             break
 
@@ -531,8 +654,9 @@ def menu():
             print("3) Multiplicación matriz·vector (explicada)")
             print("4) Sistema homogéneo / no homogéneo + Dependencia lineal")
             print("5) Operaciones con matrices y traspuesta ")
+            print("6) Inversa de una matriz (Gauss–Jordan)")
             print("q) Salir")
-            op = pedir_opcion("Opción: ", {"1", "2", "3", "4", "5", "q"})
+            op = pedir_opcion("Opción: ", {"1", "2", "3", "4", "5", "6", "q"})
             if op == "1":
                 menu_sistemas()
             elif op == "2":
@@ -543,6 +667,8 @@ def menu():
                 opP4_sistema_h_oh()
             elif op == "5":
                 menu_programa5()
+            elif op == "6":
+                menu_programa6()
             elif op == "q":
                 break
     except KeyboardInterrupt:
