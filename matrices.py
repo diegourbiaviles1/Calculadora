@@ -245,3 +245,54 @@ def verificar_propiedades_traspuesta(A: Matriz, B: Matriz, k: float) -> Dict[str
         info["d"] = {"se_cumple": False, "mensaje": "No aplica: columnas(A) ≠ filas(B)."}
 
     return info
+
+def propiedad_r_suma_traspuesta_explicada(A: Matriz, B: Matriz, r: float) -> Dict[str, Any]:
+    """
+    Verifica la propiedad: ( r (A + B) )^T = r ( A^T + B^T )
+    Muestra el procedimiento con pasos e intermedios.
+    """
+    pasos: List[str] = []
+
+    # Validaciones
+    if not es_rectangular(A) or not es_rectangular(B):
+        return {"pasos": pasos, "conclusion": "Alguna matriz no es rectangular."}
+    if not mismas_dim(A, B):
+        return {"pasos": pasos, "conclusion": "No se puede aplicar: A y B deben tener las mismas dimensiones."}
+
+    pasos.append(f"Dimensiones: A{dims(A)}, B{dims(B)} → compatibles para suma.")
+    pasos.append(f"Escalar r = {r:g}")
+
+    # Lado izquierdo: ( r (A + B) )^T
+    S = suma(A, B)
+    pasos.append("Se calcula S = A + B.")
+    rS = escalar_por_matriz(r, S)
+    pasos.append("Se calcula rS = r·(A + B).")
+    izq = traspuesta(rS)
+    pasos.append("Se calcula izquierda: ( r (A + B) )^T.")
+
+    # Lado derecho: r ( A^T + B^T )
+    AT = traspuesta(A)
+    BT = traspuesta(B)
+    pasos.append("Se calculan A^T y B^T.")
+    ATmBT = suma(AT, BT)
+    pasos.append("Se calcula (A^T + B^T).")
+    der = escalar_por_matriz(r, ATmBT)
+    pasos.append("Se calcula derecha: r·(A^T + B^T).")
+
+    # Comparación
+    cumple = iguales(izq, der)
+    pasos.append("Se comparan ambas matrices resultado.")
+    conclusion = "Se cumple la propiedad ( r (A + B) )^T = r ( A^T + B^T )." if cumple else \
+                 "No se cumple la propiedad ( r (A + B) )^T = r ( A^T + B^T )."
+
+    return {
+        "pasos": pasos,
+        "S": S,
+        "rS": rS,
+        "izquierda": izq,
+        "AT": AT,
+        "BT": BT,
+        "AT_mas_BT": ATmBT,
+        "derecha": der,
+        "conclusion": conclusion
+    }
