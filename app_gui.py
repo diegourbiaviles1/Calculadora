@@ -1046,11 +1046,12 @@ class TabVectores(QtWidgets.QWidget):
 #   Programa 5 (Matrices) — con cálculo elemento a elemento
 # =========================
 class TabProg5(QtWidgets.QWidget):
-    """Programa 5 — Operaciones con matrices y verificación de propiedades de la traspuesta."""
+    """Programa 5 — Operaciones con matrices, verificación de traspuesta y evaluador de expresiones matriciales."""
     def __init__(self, parent=None):
         super().__init__(parent)
         main = QtWidgets.QVBoxLayout(self)
 
+        # --- fila superior: tamaños A y B + escalar r ---
         top = QtWidgets.QHBoxLayout()
         self.sp_m = QtWidgets.QSpinBox(); self.sp_m.setRange(1, 50); self.sp_m.setValue(2)
         self.sp_n = QtWidgets.QSpinBox(); self.sp_n.setRange(1, 50); self.sp_n.setValue(2)
@@ -1069,6 +1070,7 @@ class TabProg5(QtWidgets.QWidget):
         top.addStretch(1)
         main.addLayout(top)
 
+        # --- centro: tablas A y B a la izquierda, acciones a la derecha ---
         center = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
 
         left = QtWidgets.QWidget(); ll = QtWidgets.QVBoxLayout(left); ll.setContentsMargins(0,0,0,0)
@@ -1109,12 +1111,39 @@ class TabProg5(QtWidgets.QWidget):
         rl.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         self.btn_fmt.clicked.connect(self._toggle_fmt)
 
+        # ====== NUEVA SECCIÓN: Evaluar expresión matricial ======
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        rl.addWidget(sep)
+
+        lbl_expr = QtWidgets.QLabel("Evaluar expresión matricial (usa corchetes y ';' para filas)")
+        lbl_expr.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+        rl.addWidget(lbl_expr)
+
+        self.expr_edit = QtWidgets.QPlainTextEdit()
+        self.expr_edit.setPlaceholderText(
+            "Ejemplos:\n"
+            "1) [-1 8 -3; 0 10 -4] * ([5 -6; -1 0; 0 3] - 1/2 * [-2 4; 0 2; -4 -6])\n"
+            "2) ([1 2; 3 4] + [0 5; -1 2]) * [1 0; 0 1]\n"
+            "3) ([-2 3; 1 -1])^T"
+        )
+        self.expr_edit.setFont(mono_font())
+        self.expr_edit.setFixedHeight(110)
+        rl.addWidget(self.expr_edit)
+
+        self.btn_eval_expr = btn("Evaluar expresión matricial")
+        rl.addWidget(self.btn_eval_expr, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.btn_eval_expr.clicked.connect(self.on_eval_expr)
+        # ========================================================
+
         center.addWidget(left)
         center.addWidget(right)
         center.setStretchFactor(0, 1)
         center.setStretchFactor(1, 1)
         main.addWidget(center)
 
+        # conexiones base
         self.sp_m.valueChanged.connect(self._sync_A)
         self.sp_n.valueChanged.connect(self._sync_A)
         self.sp_r.valueChanged.connect(self._sync_B)
@@ -1133,10 +1162,11 @@ class TabProg5(QtWidgets.QWidget):
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self, activated=self.on_sum)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self, activated=self.on_sum)
 
+        # Mantener B.m = A.n para poder multiplicar A·B fácilmente
         self.sp_n.valueChanged.connect(lambda v: self.sp_r.setValue(v))
         self._sync_A(); self._sync_B()
 
-    # helpers formato
+    # ---------- helpers formato ----------
     def _set_text(self, base_text: str):
         self._last_dec = text_to_decimals(base_text)
         self._last_frac = text_to_fractions(base_text)
@@ -1166,6 +1196,7 @@ class TabProg5(QtWidgets.QWidget):
     def _print(self, lines: list[str]):
         self._set_text("\n".join(lines))
 
+    # ---------- acciones (existentes) ----------
     def on_sum(self):
         try:
             A = self.tblA.to_matrix()
@@ -1262,8 +1293,33 @@ class TabProg5(QtWidgets.QWidget):
         except Exception as e:
             self._print(["Error:", str(e)])
 
+    # ---------- NUEVO: evaluar expresión matricial ----------
+    def on_eval_expr(self):
+        """Evalúa una expresión matricial escrita como texto (p.ej., [-1 8 -3; 0 10 -4] * ([5 -6; -1 0; 0 3] - 1/2 * [-2 4; 0 2; -4 -6]))."""
+        try:
+            expr = self.expr_edit.toPlainText().strip()
+            if not expr:
+                raise ValueError("Debe ingresar una expresión.")
+
+            # Esta función debe existir en matrices.py
+            from matrices import evaluar_expresion_matricial
+
+            out = evaluar_expresion_matricial(expr)
+
+            lines = ["--- Evaluación de expresión matricial ---"]
+            for p in out.get("pasos", []):
+                lines.append(p)
+            lines += ["", "Resultado:", format_matrix_text(out["resultado"])]
+            self._set_text("\n".join(lines))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+
 # =========================
 #   Programa 6 (Inversa: Gauss–Jordan + propiedades) — botón global por pestaña
+# =========================
+# =========================
+#   Programa 6 (Inversa: Gauss–Jordan + propiedades)
 # =========================
 class TabProg6(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -1272,18 +1328,25 @@ class TabProg6(QtWidgets.QWidget):
 
         # --- fila superior ---
         top = QtWidgets.QHBoxLayout()
-        self.sp_n = QtWidgets.QSpinBox(); self.sp_n.setRange(1, 50); self.sp_n.setValue(2)
-        top.addWidget(QtWidgets.QLabel("n:")); top.addWidget(self.sp_n)
+        self.sp_n = QtWidgets.QSpinBox()
+        self.sp_n.setRange(1, 50)
+        self.sp_n.setValue(2)
+        top.addWidget(QtWidgets.QLabel("n:"))
+        top.addWidget(self.sp_n)
         top.addStretch(1)
         root.addLayout(top)
 
         # --- centro: tabla (izq) + conclusiones (der) ---
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        left = QtWidgets.QWidget(); ll = QtWidgets.QVBoxLayout(left); ll.setContentsMargins(0,0,0,0)
+        left = QtWidgets.QWidget()
+        ll = QtWidgets.QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
         self.tblA = MatrixTable(2, 2, "Matriz A (n×n)")
         ll.addWidget(self.tblA)
 
-        right = QtWidgets.QWidget(); rl = QtWidgets.QVBoxLayout(right); rl.setContentsMargins(6,0,0,0)
+        right = QtWidgets.QWidget()
+        rl = QtWidgets.QVBoxLayout(right)
+        rl.setContentsMargins(6, 0, 0, 0)
         self.summary = OutputArea()
         rl.addWidget(self.summary)
 
@@ -1295,9 +1358,9 @@ class TabProg6(QtWidgets.QWidget):
 
         # --- barra de acciones ---
         actions = QtWidgets.QHBoxLayout()
-        self.btn_inv   = btn("Calcular A^{-1} y |A|")
+        self.btn_inv = btn("Calcular A^{-1} y |A|")
         self.btn_props = btn("Verificar propiedades (c)(d)(e)")
-        self.btn_all   = btn("Todo junto")
+        self.btn_all = btn("Todo junto")
         self.btn_clear = btn("Limpiar")
         actions.addStretch(1)
         for b in (self.btn_inv, self.btn_props, self.btn_all, self.btn_clear):
@@ -1310,10 +1373,12 @@ class TabProg6(QtWidgets.QWidget):
         self.steps_all.setPlaceholderText("Aquí se mostrará TODO el procedimiento de Gauss–Jordan sobre [A | I].")
         root.addWidget(self.steps_all)
 
-        # === Botón global de formato (pestaña) — controla summary y steps ===
+        # --- botón de formato ---
         self._show_frac = False
-        self._sum_dec = ""; self._sum_frac = ""
-        self._steps_dec = ""; self._steps_frac = ""
+        self._sum_dec = ""
+        self._sum_frac = ""
+        self._steps_dec = ""
+        self._steps_frac = ""
         self.btn_fmt = btn("Cambiar a fracciones")
         root.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         self.btn_fmt.clicked.connect(self._toggle_fmt)
@@ -1328,7 +1393,7 @@ class TabProg6(QtWidgets.QWidget):
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+I"), self, activated=self.on_inv)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+P"), self, activated=self.on_props)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+T"), self, activated=self.on_all)
-        QtGui.QShortcut(QtGui.QKeySequence("Esc"),   self, activated=self._clear_all)
+        QtGui.QShortcut(QtGui.QKeySequence("Esc"), self, activated=self._clear_all)
 
         self._sync_n()
 
@@ -1348,14 +1413,13 @@ class TabProg6(QtWidgets.QWidget):
             raise ValueError("A debe ser cuadrada n×n.")
         return A
 
-    # helpers formato
     def _set_summary(self, base_text: str):
-        self._sum_dec  = text_to_decimals(base_text)
+        self._sum_dec = text_to_decimals(base_text)
         self._sum_frac = text_to_fractions(base_text)
         self.summary.clear_and_write(self._sum_frac if self._show_frac else self._sum_dec)
 
     def _set_steps(self, base_text: str):
-        self._steps_dec  = text_to_decimals(base_text)
+        self._steps_dec = text_to_decimals(base_text)
         self._steps_frac = text_to_fractions(base_text)
         self.steps_all.clear_and_write(self._steps_frac if self._show_frac else self._steps_dec)
 
@@ -1373,12 +1437,20 @@ class TabProg6(QtWidgets.QWidget):
 
             lines = []
             lines += ["=== Inversa por Gauss–Jordan ===", ""]
-            lines += ["Determinante:", inv.get("det_texto","|A| = (desconocido)"), ""]
-            lines += ["Conclusión:", inv.get("conclusion","")]
+            lines += ["Determinante:", inv.get("det_texto", "|A| = (desconocido)"), ""]
+            lines += ["Conclusión (inversa):", inv.get("conclusion", "")]
             if inv.get("estado") == "ok":
                 lines += ["", "A^{-1} =", format_matrix_text(inv["Ainv"])]
-            self._set_summary("\n".join(lines))
 
+            # Mensaje final según determinante
+            det = inv.get("det")
+            if det is not None:
+                if abs(float(det)) <= 1e-10:
+                    lines += ["", "El determinante es cero por lo tanto no es invertible."]
+                else:
+                    lines += ["", "El determinante es diferente de 0 por lo tanto es una matriz no singular y tiene inversa."]
+
+            self._set_summary("\n".join(lines))
             pasos = inv.get("pasos", [])
             self._set_steps("\n\n".join(pasos) if pasos else "(No se generaron pasos.)")
 
@@ -1393,14 +1465,9 @@ class TabProg6(QtWidgets.QWidget):
 
             lines = []
             lines += ["=== Propiedades (c)(d)(e) ===", ""]
-            lines += [f"Pivotes (1-index): {props.get('pivotes', 'N/A')}",
-                      f"Rango: {props.get('rango', 'N/A')}", ""]
+            lines += [f"Pivotes (1-index): {props.get('pivotes', 'N/A')}"]
+            lines += [f"Rango: {props.get('rango', 'N/A')}", ""]
             lines += [props.get("explicacion", "No se pudo generar la explicación.")]
-            
-            if props.get("detalle_sistema_homogeneo"):
-                lines.append("\n--- Detalles del sistema homogéneo Ax=0 ---")
-                lines.append(formatear_solucion_parametrica(props["detalle_sistema_homogeneo"]))
-                
             self._set_summary("\n".join(lines))
             self._set_steps("(Ejecuta 'Calcular A^{-1} y |A|' o 'Todo junto' para ver el procedimiento).")
 
@@ -1416,12 +1483,22 @@ class TabProg6(QtWidgets.QWidget):
 
             lines = []
             lines += ["=== Inversa + Propiedades ===", ""]
-            lines += ["Determinante:", inv.get("det_texto","|A| = (desconocido)"), ""]
-            lines += ["Conclusión (inversa):", inv.get("conclusion","")]
+            lines += ["Determinante:", inv.get("det_texto", "|A| = (desconocido)"), ""]
+            lines += ["Conclusión (inversa):", inv.get("conclusion", "")]
             if inv.get("estado") == "ok":
                 lines += ["", "A^{-1} =", format_matrix_text(inv["Ainv"])]
-            lines += ["", "--- Propiedades (c)(d)(e) ---", props.get("explicacion",""), ""]
-            lines += ["Conclusión global:", full.get("conclusion_global","")]
+
+            # Mensaje final según determinante
+            det = inv.get("det")
+            if det is not None:
+                if abs(float(det)) <= 1e-10:
+                    lines += ["", "El determinante es cero por lo tanto no es invertible."]
+                else:
+                    lines += ["", "El determinante es diferente de 0 por lo tanto es una matriz no singular y tiene inversa."]
+
+            # Propiedades
+            lines += ["", "--- Propiedades (c)(d)(e) ---", props.get("explicacion", ""), ""]
+            lines += ["Conclusión global:", full.get("conclusion_global", "")]
             self._set_summary("\n".join(lines))
 
             pasos = inv.get("pasos", [])
@@ -1430,6 +1507,8 @@ class TabProg6(QtWidgets.QWidget):
         except Exception as e:
             self._set_summary("Error: " + str(e))
             self._set_steps("")
+
+
 
 # =========================
 #   Ventana principal
