@@ -1,7 +1,9 @@
-# app_gui.py — GUI PyQt6 completa (incluye nuevas propiedades en Programa 5)
+# app_gui.py — GUI PyQt6 completa (incluye Programa 6: Inversa por Gauss–Jordan)
 from __future__ import annotations
 from typing import List
 import sys
+import re
+from fractions import Fraction
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 
@@ -10,35 +12,34 @@ from sistema_lineal import SistemaLineal, formatear_solucion_parametrica
 from homogeneo import (
     resolver_sistema_homogeneo_y_no_homogeneo,
     resolver_dependencia_lineal_con_homogeneo,
+    analizar_dependencia,
 )
 from algebra_vector import (
-    verificar_propiedades,                 # <- IMPORT NECESARIO
     resolver_AX_igual_B,
     multiplicacion_matriz_vector_explicada,
     sistema_a_forma_matricial,
     ecuacion_vectorial,
     combinacion_lineal_explicada,
+    verificar_propiedades,
+    verificar_distributiva_matriz,
 )
-# Programa 5
+
+# ====== Funciones del Programa 5 ======
 from matrices import (
     suma_matrices_explicada,
     resta_matrices_explicada,
     producto_escalar_explicado,
     producto_matrices_explicado,
     traspuesta_explicada,
-    propiedad_r_suma_traspuesta_explicada,  # <- NUEVO
+    propiedad_r_suma_traspuesta_explicada, 
 )
 
-# (Si usas Programa 6, mantén sus imports aquí; si no, puedes eliminarlos)
-try:
-    from inversa import (
-        inversa_por_gauss_jordan,
-        verificar_propiedades_invertibilidad,
-        programa_inversa_con_propiedades,
-    )
-    HAS_P6 = True
-except Exception:
-    HAS_P6 = False
+# ====== Programa 6 (Inversa) ======
+from inversa import (
+    inversa_por_gauss_jordan,
+    verificar_propiedades_invertibilidad,
+    programa_inversa_con_propiedades,
+)
 
 # =========================
 #   Helpers de parsing
@@ -108,7 +109,8 @@ def pretty_augmented_from_table(table: "MatrixAugTable", dec: int = 4) -> str:
         left = "  ".join(grid[i][j].rjust(widths[j]) for j in range(n))
         right = grid[i][n].rjust(widths[n])
         rows_txt.append(f"{left}  |  {right}" if n > 0 else right)
-    L = ["⎡", "⎢", "⎣"]; R = ["⎤", "⎥", "⎦"]
+    L = ["⎡", "⎢", "⎣"]
+    R = ["⎤", "⎥", "⎦"]
     out = []
     for i, row in enumerate(rows_txt):
         lbr = L[0] if i == 0 else (L[2] if i == m - 1 else L[1])
@@ -117,6 +119,17 @@ def pretty_augmented_from_table(table: "MatrixAugTable", dec: int = 4) -> str:
     return "\n".join(out)
 
 # ===== Helpers extra GUI =====
+def fill_augmented_template(m: int, n: int) -> str:
+    fila = " ".join("0" for _ in range(n)) + " | 0"
+    return "\n".join(fila for _ in range(m))
+
+def demo_augmented_3x3() -> str:
+    return "\n".join([
+        "2  1 -1 |  8",
+        "-3 -1  2 | -11",
+        "-2  1  2 | -3",
+    ])
+
 def save_text_to_file(parent: QtWidgets.QWidget, text: str, suggested_name="salida.txt"):
     if not text.strip():
         QtWidgets.QMessageBox.information(parent, "Exportar", "No hay nada para exportar.")
@@ -161,16 +174,20 @@ def btn(text):
     return b
 
 class LabeledEdit(QtWidgets.QWidget):
-    def __init__(self, label, placeholder="", parent=None):
+    def __init__(self, label, placeholder="", parent=None, default_value=""):
         super().__init__(parent)
         lay = QtWidgets.QHBoxLayout(self); lay.setContentsMargins(0,0,0,0)
         self.lbl = QtWidgets.QLabel(label)
         self.edit = QtWidgets.QLineEdit(); self.edit.setPlaceholderText(placeholder)
+        if default_value:
+            self.edit.setText(default_value)
         lay.addWidget(self.lbl); lay.addWidget(self.edit)
+
     def text(self): return self.edit.text().strip()
     def setText(self, t): self.edit.setText(t)
 
 class MatrixInput(QtWidgets.QWidget):
+    """Entrada multilinea para matrices/vectores con tipografía monoespaciada."""
     def __init__(self, title="Matriz", height=120, parent=None):
         super().__init__(parent)
         lay = QtWidgets.QVBoxLayout(self); lay.setContentsMargins(0,0,0,0)
@@ -178,6 +195,7 @@ class MatrixInput(QtWidgets.QWidget):
         self.txt = QtWidgets.QPlainTextEdit()
         self.txt.setFont(mono_font()); self.txt.setFixedHeight(height)
         lay.addWidget(self.lbl); lay.addWidget(self.txt)
+
     def text(self): return self.txt.toPlainText().strip()
     def setText(self, t): self.txt.setPlainText(t or "")
 
@@ -186,17 +204,55 @@ class OutputArea(QtWidgets.QTextEdit):
         super().__init__(parent)
         self.setReadOnly(True)
         self.setFont(mono_font())
-        self.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+        self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
     def clear_and_write(self, s: str):
         self.clear(); self.setPlainText(s or "")
+
+# =========================
+#   Conversores de formato (decimales ↔ fracciones)
+# =========================
+_frac_re = re.compile(r'(?<![\w])(-?\d+)\s*/\s*(-?\d+)(?![\w])')
+_dec_re  = re.compile(r'(?<![\w/.-])(-?(?:\d+\.\d+|\d+))(?![\w/])')
+
+def _to_fraction_str(x: float) -> str:
+    fr = Fraction(x).limit_denominator(1000000)
+    if fr.denominator == 1:
+        return f"{fr.numerator}"
+    return f"{fr.numerator}/{fr.denominator}"
+
+def text_to_fractions(text: str) -> str:
+    def repl_dec(m):
+        s = m.group(1)
+        try:
+            val = float(s)
+        except:
+            return s
+        return _to_fraction_str(val)
+    return _dec_re.sub(repl_dec, text)
+
+def text_to_decimals(text: str, dec: int = DEFAULT_DEC) -> str:
+    def repl_frac(m):
+        num = int(m.group(1)); den = int(m.group(2))
+        if den == 0:
+            return f"{num}/0"
+        val = num / den
+        return fmt_number(val, dec, False)
+    return _frac_re.sub(repl_frac, text)
 
 # =========================
 #   Editor tabular Ab
 # =========================
 class MatrixAugTable(QtWidgets.QWidget):
+    """
+    Editor para matrices aumentadas (m x (n+1)).
+    Añadimos set_size() y to_text() para integrarlo con otras pestañas.
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
         lay = QtWidgets.QVBoxLayout(self); lay.setContentsMargins(0,0,0,0)
+
+        # Barra superior: m, n
         top = QtWidgets.QHBoxLayout()
         top.addWidget(QtWidgets.QLabel("m:"))
         self.spin_m = QtWidgets.QSpinBox(); self.spin_m.setRange(1, 999); self.spin_m.setValue(3)
@@ -208,20 +264,24 @@ class MatrixAugTable(QtWidgets.QWidget):
         top.addStretch(1)
         lay.addLayout(top)
 
+        # Tabla
         self.table = QtWidgets.QTableWidget(3, 4)  # 3 x (3+1)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setDefaultAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.table.verticalHeader().setVisible(False)
+
         self._refresh_headers()
         lay.addWidget(self.table)
 
+        # Conexiones
         self.spin_m.valueChanged.connect(self._resize_table)
         self.spin_n.valueChanged.connect(self._resize_table)
 
     def _refresh_headers(self):
         n = self.table.columnCount() - 1
-        labels = [f"X{j+1}" for j in range(n)]; labels.append("B")
+        labels = [f"X{j+1}" for j in range(n)]
+        labels.append("B")
         self.table.setHorizontalHeaderLabels(labels)
 
     def _resize_table(self):
@@ -233,6 +293,7 @@ class MatrixAugTable(QtWidgets.QWidget):
             self.table.setColumnCount(n + 1)
             self._refresh_headers()
 
+    # API extra
     def set_size(self, m: int, n: int):
         self.spin_m.setValue(m)
         self.spin_n.setValue(n)
@@ -277,6 +338,7 @@ class MatrixAugTable(QtWidgets.QWidget):
 #   Tabla genérica para matrices (NO aumentada)
 # =========================
 class MatrixTable(QtWidgets.QWidget):
+    """Tabla genérica de tamaño m x n para matrices."""
     def __init__(self, m=2, n=2, title="Matriz", parent=None):
         super().__init__(parent)
         lay = QtWidgets.QVBoxLayout(self); lay.setContentsMargins(0,0,0,0)
@@ -332,8 +394,34 @@ class MatrixTable(QtWidgets.QWidget):
                 row.append(_safe_float(t))
             A.append(row)
         return A
+    
+# --- NUEVO WIDGET para entrada de vectores ---
+class VectorInputTable(QtWidgets.QWidget):
+    """Un widget para introducir un vector en una tabla de una sola fila."""
+    def __init__(self, title: str, n_initial: int = 3, parent=None):
+        super().__init__(parent)
+        layout = QtWidgets.QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0)
+        self.label = QtWidgets.QLabel(title)
+        self.table = QtWidgets.QTableWidget(1, n_initial)
+        self.table.setFixedHeight(55)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.label)
+        layout.addWidget(self.table)
+        self._refresh_headers()
 
-# ===== Formateo de matrices (texto) =====
+    def _refresh_headers(self):
+        self.table.setHorizontalHeaderLabels([f"v{j+1}" for j in range(self.table.columnCount())])
+        
+    def set_size(self, n: int):
+        if self.table.columnCount() != n:
+            self.table.setColumnCount(n)
+            self._refresh_headers()
+
+    def to_vector(self) -> list[float]:
+        return [_safe_float(self.table.item(0, j).text() if self.table.item(0, j) else "0") for j in range(self.table.columnCount())]
+
+# ===== Formateo de matrices para salida en texto =====
 def format_matrix_text(M, dec=DEFAULT_DEC) -> str:
     if not M:
         return "[ ]"
@@ -348,24 +436,30 @@ def format_matrix_text(M, dec=DEFAULT_DEC) -> str:
         lines.append("[ " + "  ".join(parts) + " ]")
     return "\n".join(lines)
 
-# ===== Explicación elemento a elemento (P5) =====
-def _num(x): return fmt_number(x, DEFAULT_DEC, False)
+# ===== Explicación elemento a elemento =====
+def _num(x):  # usa el mismo formato que el resto de la app
+    return fmt_number(x, DEFAULT_DEC, False)
+
 def explain_sum(A, B):
     m, n = len(A), len(A[0])
     lines = []
     for i in range(m):
         for j in range(n):
             a, b = A[i][j], B[i][j]
-            lines.append(f"C[{i+1},{j+1}] = A[{i+1},{j+1}] + B[{i+1},{j+1}] = {_num(a)} + {_num(b)} = {_num(a+b)}")
+            lines.append(f"C[{i+1},{j+1}] = A[{i+1},{j+1}] + B[{i+1},{j+1}] = "
+                         f"{_num(a)} + {_num(b)} = {_num(a+b)}")
     return lines
+
 def explain_res(A, B):
     m, n = len(A), len(A[0])
     lines = []
     for i in range(m):
         for j in range(n):
             a, b = A[i][j], B[i][j]
-            lines.append(f"C[{i+1},{j+1}] = A[{i+1},{j+1}] - B[{i+1},{j+1}] = {_num(a)} - {_num(b)} = {_num(a-b)}")
+            lines.append(f"C[{i+1},{j+1}] = A[{i+1},{j+1}] - B[{i+1},{j+1}] = "
+                         f"{_num(a)} - {_num(b)} = {_num(a-b)}")
     return lines
+
 def explain_kA(k, A):
     m, n = len(A), len(A[0])
     lines = []
@@ -374,27 +468,35 @@ def explain_kA(k, A):
             a = A[i][j]
             lines.append(f"C[{i+1},{j+1}] = k·A[{i+1},{j+1}] = {_num(k)}·{_num(a)} = {_num(k*a)}")
     return lines
+
 def explain_AB(A, B):
     m, p = len(A), len(B[0])
-    n = len(A[0])
+    n = len(A[0])  # = filas(B)
     lines = []
     for i in range(m):
         for j in range(p):
-            terms = [f"A[{i+1},{k+1}]·B[{k+1},{j+1}]={_num(A[i][k])}·{_num(B[k][j])}" for k in range(n)]
+            terms = [f"A[{i+1},{k+1}]·B[{k+1},{j+1}]={_num(A[i][k])}·{_num(B[k][j])}"
+                     for k in range(n)]
             s = sum(A[i][k]*B[k][j] for k in range(n))
-            lines.append("C[{},{}] = ".format(i+1,j+1) + " + ".join(terms) + f" = {_num(s)}")
+            lines.append(
+                f"C[{i+1},{j+1}] = " +
+                " + ".join(terms) +
+                f" = {_num(s)}"
+            )
     return lines
 
 # =========================
-#   Pestañas de la app
+#   Pestañas existentes
 # =========================
 class TabGaussJordan(QtWidgets.QWidget):
+    """Resolver por Gauss–Jordan a partir de matriz aumentada (tabla a la izquierda, vista inicial a la derecha)."""
     def __init__(self, parent=None):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
 
         self.group = QtWidgets.QGroupBox("Tamaño de la matriz")
         gl = QtWidgets.QVBoxLayout(self.group)
+
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
 
         left = QtWidgets.QWidget()
@@ -406,11 +508,16 @@ class TabGaussJordan(QtWidgets.QWidget):
         right_lay = QtWidgets.QVBoxLayout(right); right_lay.setContentsMargins(6,0,0,0)
         self.lbl_preview = QtWidgets.QLabel("Matriz aumentada inicial")
         self.lbl_preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
-        self.preview = OutputArea(); self.preview.setReadOnly(True); self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
-        right_lay.addWidget(self.lbl_preview); right_lay.addWidget(self.preview)
+        self.preview = OutputArea()
+        self.preview.setReadOnly(True)
+        self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+        right_lay.addWidget(self.lbl_preview)
+        right_lay.addWidget(self.preview)
 
-        splitter.addWidget(left); splitter.addWidget(right)
-        splitter.setStretchFactor(0, 1); splitter.setStretchFactor(1, 1)
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
         gl.addWidget(splitter)
         mlay.addWidget(self.group)
 
@@ -418,7 +525,11 @@ class TabGaussJordan(QtWidgets.QWidget):
         self.btn_zeros = QtWidgets.QPushButton("Rellenar ceros")
         self.btn_clear = QtWidgets.QPushButton("Limpiar")
         self.btn_solve = QtWidgets.QPushButton("Resolver por Gauss Jordan")
-        btn_bar.addStretch(1); btn_bar.addWidget(self.btn_zeros); btn_bar.addWidget(self.btn_clear); btn_bar.addWidget(self.btn_solve); btn_bar.addStretch(1)
+        btn_bar.addStretch(1)
+        btn_bar.addWidget(self.btn_zeros)
+        btn_bar.addWidget(self.btn_clear)
+        btn_bar.addWidget(self.btn_solve)
+        btn_bar.addStretch(1)
         gl.addLayout(btn_bar)
 
         self.lbl_procedimiento = QtWidgets.QLabel("Procedimiento (reducción por filas)")
@@ -427,6 +538,14 @@ class TabGaussJordan(QtWidgets.QWidget):
 
         self.out = OutputArea()
         mlay.addWidget(self.out)
+
+        # === Botón global de formato (pestaña) ===
+        self._show_frac = False
+        self._last_dec = ""
+        self._last_frac = ""
+        self.btn_fmt = btn("Cambiar a fracciones")
+        mlay.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.btn_fmt.clicked.connect(self._toggle_fmt)
 
         self.btn_zeros.clicked.connect(self.aug_table.fill_zeros)
         self.btn_clear.clicked.connect(self.aug_table.clear_all)
@@ -444,6 +563,16 @@ class TabGaussJordan(QtWidgets.QWidget):
     def update_preview(self):
         self.preview.clear_and_write(pretty_augmented_from_table(self.aug_table))
 
+    def _set_text(self, base_text: str):
+        self._last_dec = text_to_decimals(base_text)
+        self._last_frac = text_to_fractions(base_text)
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    def _toggle_fmt(self):
+        self._show_frac = not self._show_frac
+        self.btn_fmt.setText("Cambiar a decimales" if self._show_frac else "Cambiar a fracciones")
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
     def _render_out(self, out: dict):
         lines = ["=== Pasos ==="]
         for p in out.get("pasos", []):
@@ -455,8 +584,8 @@ class TabGaussJordan(QtWidgets.QWidget):
         else:
             lines.append("Sistema inconsistente (sin solución).")
         lines.append("")
-        lines.append(formatear_solucion_parametrica(out, nombres_vars=None, dec=4, fracciones=True))
-        self.out.clear_and_write("\n".join(lines))
+        param_txt = formatear_solucion_parametrica(out, nombres_vars=None, dec=4, fracciones=True)
+        self._set_text("\n".join(lines + [param_txt]))
 
     def on_run_table(self):
         try:
@@ -465,242 +594,459 @@ class TabGaussJordan(QtWidgets.QWidget):
             out = sl.gauss_jordan()
             self._render_out(out)
         except Exception as e:
-            self.out.clear_and_write("Error: " + str(e))
+            self._set_text("Error: " + str(e))
 
 class TabProg4(QtWidgets.QWidget):
+    """Programa 4: Ax=b (pasos+paramétrica) y dependencia A·c=0."""
     def __init__(self, parent=None):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
 
-        dims = QtWidgets.QHBoxLayout()
-        self.m_in = LabeledEdit("m:", "filas"); self.n_in = LabeledEdit("n:", "columnas")
-        self.btn_export = btn("Exportar pasos…")
-        dims.addWidget(self.m_in); dims.addWidget(self.n_in); dims.addStretch(1); dims.addWidget(self.btn_export)
-        mlay.addLayout(dims)
+        # --- Menú de selección de operación ---
+        top_bar = QtWidgets.QHBoxLayout()
+        self.op_selector = QtWidgets.QComboBox()
+        self.op_selector.addItems([
+            "Resolver Ax=b + Dependencia de columnas de A",
+            "Análisis de Dependencia Lineal (de un conjunto de vectores)"
+        ])
+        self.btn_export = btn("Exportar resultados...")
+        top_bar.addWidget(QtWidgets.QLabel("Operación:"))
+        top_bar.addWidget(self.op_selector, 1)
+        top_bar.addWidget(self.btn_export)
+        mlay.addLayout(top_bar)
+        
+        # --- Contenedor de páginas ---
+        self.stack = QtWidgets.QStackedWidget()
+        self.stack.addWidget(self._create_axb_page())
+        self.stack.addWidget(self._create_dependencia_page())
+        mlay.addWidget(self.stack)
+        
+        self.out = OutputArea()
+        mlay.addWidget(self.out)
 
-        self.A = MatrixInput("Matriz A (m x n)")
-        self.b = MatrixInput("Vector b (m valores, misma línea o una por línea)", height=70)
-        mlay.addWidget(self.A); mlay.addWidget(self.b)
-
-        self.run = btn("Resolver Ax=b + Dependencia (A·c=0)")
-        mlay.addWidget(self.run)
-
-        self.out = OutputArea(); mlay.addWidget(self.out)
-        self.run.clicked.connect(self.on_run)
+        # === Botón global de formato (pestaña) ===
+        self._show_frac = False
+        self._last_dec = ""
+        self._last_frac = ""
+        self.btn_fmt = btn("Cambiar a fracciones")
+        mlay.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.btn_fmt.clicked.connect(self._toggle_fmt)
+        
+        self.op_selector.currentIndexChanged.connect(self.stack.setCurrentIndex)
         self.btn_export.clicked.connect(lambda: save_text_to_file(self, self.out.toPlainText(), "programa4.txt"))
 
-    def on_run(self):
+    def _set_text(self, base_text: str):
+        self._last_dec = text_to_decimals(base_text)
+        self._last_frac = text_to_fractions(base_text)
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    def _toggle_fmt(self):
+        self._show_frac = not self._show_frac
+        self.btn_fmt.setText("Cambiar a decimales" if self._show_frac else "Cambiar a fracciones")
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    def _create_axb_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.m_in_axb = LabeledEdit("m (filas):", "3", default_value="3")
+        self.n_in_axb = LabeledEdit("n (columnas):", "3", default_value="3")
+        dims.addWidget(self.m_in_axb)
+        dims.addWidget(self.n_in_axb)
+        layout.addLayout(dims)
+        
+        self.A_table_axb = MatrixTable(title="Matriz A (m x n)")
+        self.b_input_axb = VectorInputTable("Vector b (m valores)", n_initial=3)
+        layout.addWidget(self.A_table_axb)
+        layout.addWidget(self.b_input_axb)
+        
+        run_btn = btn("Resolver Sistema y Analizar Dependencia de A")
+        run_btn.clicked.connect(self.on_run_axb)
+        layout.addWidget(run_btn)
+        
+        self.m_in_axb.edit.textChanged.connect(self._sync_axb)
+        self.n_in_axb.edit.textChanged.connect(self._sync_axb)
+        self._sync_axb()
+        return page
+
+    def _sync_axb(self):
         try:
-            m = int(self.m_in.text()); n = int(self.n_in.text())
-            A = parse_matrix(self.A.text(), m, n)
-            b_vals = parse_nums(self.b.text().replace("\n", " "))
-            if len(b_vals) != m:
-                raise ValueError(f"b debe tener {m} valores.")
+            m, n = int(self.m_in_axb.text()), int(self.n_in_axb.text())
+            self.A_table_axb.set_size(m, n)
+            self.b_input_axb.set_size(m)
+        except ValueError: pass
+
+    def _create_dependencia_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.k_in_dep = LabeledEdit("k (n° vectores):", "3", default_value="3")
+        self.n_in_dep = LabeledEdit("n (dimensión):", "3", default_value="3")
+        dims.addWidget(self.k_in_dep)
+        dims.addWidget(self.n_in_dep)
+        layout.addLayout(dims)
+        
+        self.V_table_dep = MatrixTable(title="Lista de Vectores v₁..vₖ (k filas, n columnas)")
+        layout.addWidget(self.V_table_dep)
+        
+        run_btn = btn("Analizar Dependencia Lineal de los Vectores")
+        run_btn.clicked.connect(self.on_run_dependencia)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        
+        self.k_in_dep.edit.textChanged.connect(self._sync_dep)
+        self.n_in_dep.edit.textChanged.connect(self._sync_dep)
+        self._sync_dep()
+        return page
+
+    def _sync_dep(self):
+        try:
+            k, n = int(self.k_in_dep.text()), int(self.n_in_dep.text())
+            self.V_table_dep.set_size(k, n)
+        except ValueError: pass
+
+    def on_run_axb(self):
+        try:
+            A = self.A_table_axb.to_matrix()
+            b_vals = self.b_input_axb.to_vector()
             info = resolver_sistema_homogeneo_y_no_homogeneo(A, b_vals)
-
-            lines = []
-            lines.append("=== PASOS (Gauss-Jordan aplicado a Ax = b) ===")
-            for p in info.get("pasos", []): lines.append(p)
-            lines.append("\n=== SOLUCIÓN GENERAL (forma paramétrica) ===")
-            lines.append(info["salida_parametrica"])
-            lines.append("\n=== CONCLUSIÓN DEL SISTEMA ===")
-            lines.append(info["conclusion"])
-
+            
+            lines = ["=== PASOS (Gauss-Jordan aplicado a Ax = b) ==="] + info.get("pasos", [])
+            lines += ["\n=== SOLUCIÓN GENERAL (forma paramétrica) ===", info["salida_parametrica"]]
+            lines += ["\n=== CONCLUSIÓN DEL SISTEMA ===", info["conclusion"]]
+            
             dep = resolver_dependencia_lineal_con_homogeneo(A)
-            lines.append("\n\n=== ANÁLISIS DE DEPENDENCIA LINEAL ===")
-            lines.append(dep.get("dependencia", "(sin análisis)"))
-            lines.append("\n=== PASOS (Gauss-Jordan aplicado a A·c = 0) ===")
-            for p in dep.get("pasos", []): lines.append(p)
-            lines.append("\n=== COMBINACIÓN LINEAL (forma paramétrica de los coeficientes c) ===")
-            lines.append(dep.get("salida_parametrica", ""))
-
-            self.out.clear_and_write("\n".join(lines))
+            lines += ["\n\n=== ANÁLISIS DE DEPENDENCIA LINEAL (Columnas de A) ===", dep.get("dependencia", "(sin análisis)")]
+            lines += ["\n=== PASOS (Gauss-Jordan aplicado a A·c = 0) ==="] + dep.get("pasos", [])
+            lines += ["\n=== COMBINACIÓN LINEAL (forma paramétrica de los coeficientes c) ===", dep.get("salida_parametrica", "")]
+            self._set_text("\n".join(lines))
         except Exception as e:
-            self.out.clear_and_write("Error: " + str(e))
+            self._set_text(f"Error: {e}")
+
+    def on_run_dependencia(self):
+        try:
+            V = self.V_table_dep.to_matrix()
+            info = analizar_dependencia(V)
+            lines = ["=== Conclusión ===", info["mensaje"]]
+            lines += ["\n=== Pasos (Gauss-Jordan sobre A·c = 0, donde las columnas de A son los vectores vᵢ) ===\n"] + [p + "\n" for p in info["pasos"]]
+            lines += ["\n=== Coeficientes 'c' para la combinación lineal nula ===", info["salida_parametrica"]]
+            self._set_text("\n".join(lines))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
 
 class TabAXeqB(QtWidgets.QWidget):
+    """Resolver AX=B (B vector o matriz)."""
     def __init__(self, parent=None):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
 
         dims = QtWidgets.QHBoxLayout()
-        self.m_in = LabeledEdit("m:", "filas")
-        self.n_in = LabeledEdit("n:", "columnas")
-        dims.addWidget(self.m_in); dims.addWidget(self.n_in)
+        self.m_in = LabeledEdit("m (filas):", "3", default_value="3")
+        self.n_in = LabeledEdit("n (columnas):", "3", default_value="3")
+        dims.addWidget(self.m_in)
+        dims.addWidget(self.n_in)
         mlay.addLayout(dims)
 
-        self.A = MatrixAugTable()
-        mlay.addWidget(self.A)
+        self.A_table = MatrixTable(title="Matriz A (m x n)")
+        self.b_input = VectorInputTable("Vector b (m valores)", n_initial=3)
+        mlay.addWidget(self.A_table)
+        mlay.addWidget(self.b_input)
 
-        self.b = MatrixInput("Vector b (m valores en una sola línea)")
-        self.b.txt.setPlaceholderText("Ej.: 1 2 3")
-        mlay.addWidget(self.b)
-
-        self.lbl_vector = QtWidgets.QLabel("X = ")
-        self.vector_x = QtWidgets.QLabel("")
-        mlay.addWidget(self.lbl_vector); mlay.addWidget(self.vector_x)
-
-        self.run = btn("Resolver AX=B")
+        self.run = btn("Resolver AX = b")
         mlay.addWidget(self.run)
 
-        self.out = OutputArea(); mlay.addWidget(self.out)
+        self.out = OutputArea()
+        mlay.addWidget(self.out)
+
+        # === Botón global de formato (pestaña) ===
+        self._show_frac = False
+        self._last_dec = ""
+        self._last_frac = ""
+        self.btn_fmt = btn("Cambiar a fracciones")
+        mlay.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.btn_fmt.clicked.connect(self._toggle_fmt)
+
         self.run.clicked.connect(self.on_run)
 
-        self.m_in.edit.textChanged.connect(self._sync_dims_to_table)
-        self.n_in.edit.textChanged.connect(self._sync_dims_to_table)
+        self.m_in.edit.textChanged.connect(self._sync_dims)
+        self.n_in.edit.textChanged.connect(self._sync_dims)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self, activated=self.on_run)
-        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self, activated=self.on_run)
+        
+        self._sync_dims()
 
-        self._sync_dims_to_table()
-
-    def _sync_dims_to_table(self):
+    def _sync_dims(self):
         try:
             m = int(self.m_in.text())
             n = int(self.n_in.text())
-            self.A.set_size(m, n)
-            self.A._refresh_headers()
-            self.A.fill_zeros()
-            self._update_vector_x()
-        except Exception:
+            self.A_table.set_size(m, n)
+            self.b_input.set_size(m)
+        except ValueError:
             pass
 
-    def _update_vector_x(self):
-        try:
-            n = int(self.n_in.text())
-            vector_str = "[" + "  ".join([f"x{j+1}" for j in range(n)]) + "]"
-            self.vector_x.setText(vector_str)
-        except Exception:
-            self.vector_x.setText("")
+    def _set_text(self, base_text: str):
+        self._last_dec = text_to_decimals(base_text)
+        self._last_frac = text_to_fractions(base_text)
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    def _toggle_fmt(self):
+        self._show_frac = not self._show_frac
+        self.btn_fmt.setText("Cambiar a decimales" if self._show_frac else "Cambiar a fracciones")
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
 
     def on_run(self):
         try:
-            m = int(self.m_in.text()); n = int(self.n_in.text())
-            A = parse_matrix(self.A.to_text(), m, n)
-            b_vals = parse_vector(self.b.text(), m)
+            A = self.A_table.to_matrix()
+            b_vals = self.b_input.to_vector()
+            
             out = resolver_AX_igual_B(A, b_vals)
             lines = []
+            lines.append("--- Procedimiento de Gauss-Jordan ---")
             for p in out.get("reportes", []): lines.append(p)
+            
+            lines.append("\n--- Resultado ---")
             if out.get("estado") == "ok":
                 if "x" in out:
-                    lines.append("\nx = " + str(out["x"]))
+                    lines.append("Solución única encontrada:")
+                    lines.append("x = " + str(out["x"]))
                 if "X" in out:
-                    lines.append("\nX =")
-                    for fila in out["X"]:
-                        lines.append("  " + "  ".join(fmt_number(x, DEFAULT_DEC, False) for x in fila))
+                    lines.append("Matriz solución X encontrada:")
+                    lines.append(format_matrix_text(out["X"]))
             else:
-                lines.append("\nEstado: " + str(out.get("estado")))
-            self.out.clear_and_write("\n".join(lines))
+                lines.append("Estado del sistema: " + str(out.get("estado")))
+                lines.append("No se encontró una solución única.")
+            self._set_text("\n".join(lines))
         except Exception as e:
-            self.out.clear_and_write("Error: " + str(e))
+            self._set_text("Error: " + str(e))
 
 class TabVectores(QtWidgets.QWidget):
+    """Herramientas: ecuación vectorial y combinación lineal."""
     def __init__(self, parent=None):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
+        
+        # --- Menú de selección de operación ---
+        top_bar = QtWidgets.QHBoxLayout()
+        self.op_selector = QtWidgets.QComboBox()
+        self.op_selector.addItems([
+            "1) Verificar propiedades en Rⁿ",
+            "2) Verificar distributiva A(u+v) = Au+Av",
+            "3) Combinación lineal de vectores",
+            "4) Ecuación vectorial (¿b en span{v₁..vₖ}?)"
+        ])
+        top_bar.addWidget(QtWidgets.QLabel("Seleccione una operación:"))
+        top_bar.addWidget(self.op_selector, 1)
+        mlay.addLayout(top_bar)
+        
+        # --- Contenedor de páginas ---
+        self.stack = QtWidgets.QStackedWidget()
+        self.stack.addWidget(self._create_prop_rn_page())
+        self.stack.addWidget(self._create_distributiva_page())
+        self.stack.addWidget(self._create_comb_lineal_page())
+        self.stack.addWidget(self._create_ecu_vec_page())
+        mlay.addWidget(self.stack)
+        
+        self.out = OutputArea()
+        mlay.addWidget(self.out)
 
-        group1 = QtWidgets.QGroupBox("Ecuación vectorial  (¿b en span{v1..vk}?)")
-        g1 = QtWidgets.QVBoxLayout(group1)
-        dims1 = QtWidgets.QHBoxLayout()
-        self.k1 = LabeledEdit("k:", "n° vectores")
-        self.n1 = LabeledEdit("n:", "dimensión")
-        dims1.addWidget(self.k1); dims1.addWidget(self.n1)
-        g1.addLayout(dims1)
-        self.V1 = MatrixInput("Lista de vectores (uno por línea, n valores)")
-        self.b1 = MatrixInput("b (n valores en una línea o multilinea)", height=60)
-        self.btn1 = btn("Resolver ecuación vectorial")
-        g1.addWidget(self.V1); g1.addWidget(self.b1); g1.addWidget(self.btn1)
-        mlay.addWidget(group1)
+        # === Botón global de formato (pestaña) ===
+        self._show_frac = False
+        self._last_dec = ""
+        self._last_frac = ""
+        self.btn_fmt = btn("Cambiar a fracciones")
+        mlay.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.btn_fmt.clicked.connect(self._toggle_fmt)
+        
+        self.op_selector.currentIndexChanged.connect(self.stack.setCurrentIndex)
+    
+    # helpers de formato
+    def _set_text(self, base_text: str):
+        self._last_dec = text_to_decimals(base_text)
+        self._last_frac = text_to_fractions(base_text)
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
 
-        group2 = QtWidgets.QGroupBox("Combinación lineal de vectores")
-        g2 = QtWidgets.QVBoxLayout(group2)
-        dims2 = QtWidgets.QHBoxLayout()
-        self.k2 = LabeledEdit("k:", "n° vectores")
-        self.n2 = LabeledEdit("n:", "dimensión")
-        dims2.addWidget(self.k2); dims2.addWidget(self.n2)
-        g2.addLayout(dims2)
-        self.V2 = MatrixInput("Lista de vectores (uno por línea, n valores)")
-        self.c2 = MatrixInput("Coeficientes (k valores en una línea)", height=60)
-        self.btn2 = btn("Calcular combinación")
-        g2.addWidget(self.V2); g2.addWidget(self.c2); g2.addWidget(self.btn2)
-        mlay.addWidget(group2)
+    def _toggle_fmt(self):
+        self._show_frac = not self._show_frac
+        self.btn_fmt.setText("Cambiar a decimales" if self._show_frac else "Cambiar a fracciones")
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+    
+    # --- Página 1: Propiedades en R^n ---
+    def _create_prop_rn_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        self.n_in_prn = LabeledEdit("Dimensión n:", "3", default_value="3")
+        self.v_in_prn = VectorInputTable("Vector v", 3)
+        self.u_in_prn = VectorInputTable("Vector u", 3)
+        self.w_in_prn = VectorInputTable("Vector w", 3)
+        scalars_layout = QtWidgets.QHBoxLayout()
+        self.a_in_prn = LabeledEdit("Escalar a:", "1.5", default_value="1.5")
+        self.b_in_prn = LabeledEdit("Escalar b:", "-2", default_value="-2")
+        scalars_layout.addWidget(self.a_in_prn)
+        scalars_layout.addWidget(self.b_in_prn)
+        run_btn = btn("Verificar Propiedades")
+        run_btn.clicked.connect(self.on_run_prop_rn)
+        layout.addWidget(self.n_in_prn)
+        layout.addWidget(self.v_in_prn)
+        layout.addWidget(self.u_in_prn)
+        layout.addWidget(self.w_in_prn)
+        layout.addLayout(scalars_layout)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        self.n_in_prn.edit.textChanged.connect(self._sync_prop_rn)
+        self._sync_prop_rn()
+        return page
 
-        # Verificar propiedades en R^n
-        group3 = QtWidgets.QGroupBox("1) Verificar propiedades en R^n")
-        g3 = QtWidgets.QVBoxLayout(group3)
-        self.dimN = LabeledEdit("Dimensión n:", "3")
-        self.tbl_v = MatrixTable(1, 3, "Vector v")
-        self.tbl_u = MatrixTable(1, 3, "Vector u")
-        self.tbl_w = MatrixTable(1, 3, "Vector w")
-        scalars = QtWidgets.QHBoxLayout()
-        self.a_edit = LabeledEdit("Escalar a:", "1.5")
-        self.b_edit = LabeledEdit("Escalar b:", "-2")
-        scalars.addWidget(self.a_edit); scalars.addWidget(self.b_edit)
-        self.btn_prop = btn("Verificar Propiedades")
-
-        g3.addWidget(self.dimN); g3.addWidget(self.tbl_v); g3.addWidget(self.tbl_u); g3.addWidget(self.tbl_w)
-        g3.addLayout(scalars); g3.addWidget(self.btn_prop)
-        mlay.addWidget(group3)
-
-        self.out = OutputArea(); mlay.addWidget(self.out)
-
-        self.btn1.clicked.connect(self.on_ecuacion)
-        self.btn2.clicked.connect(self.on_comb)
-        self.btn_prop.clicked.connect(self.on_prop)
-
-    def on_ecuacion(self):
+    def _sync_prop_rn(self):
         try:
-            k = int(self.k1.text()); n = int(self.n1.text())
-            V = parse_list_vectors(self.V1.text(), k, n)
-            bvals = parse_nums(self.b1.text().replace("\n", " "))
-            if len(bvals) != n: raise ValueError(f"b debe tener {n} valores.")
-            out = ecuacion_vectorial(V, bvals)
-            lines = []
-            for p in out.get("reportes", []): lines.append(p + "\n")
-            tipo = out.get("tipo") or out.get("estado")
-            lines.append("Estado: " + str(tipo))
-            lines.append("")
-            lines.append(formatear_solucion_parametrica(out, nombres_vars=None, dec=4, fracciones=True))
-            self.out.clear_and_write("\n".join(lines))
-        except Exception as e:
-            self.out.clear_and_write("Error: " + str(e))
+            n = int(self.n_in_prn.text())
+            self.v_in_prn.set_size(n)
+            self.u_in_prn.set_size(n)
+            self.w_in_prn.set_size(n)
+        except ValueError: pass
 
-    def on_comb(self):
+    def on_run_prop_rn(self):
         try:
-            k = int(self.k2.text()); n = int(self.n2.text())
-            V = parse_list_vectors(self.V2.text(), k, n)
-            coef = parse_nums(self.c2.text().replace("\n", " "))
-            if len(coef) != k: raise ValueError(f"Se esperaban {k} coeficientes.")
-            out = combinacion_lineal_explicada(V, coef, dec=4)
-            self.out.clear_and_write(out["texto"] + "\n\nComo lista: " + str(out["resultado"]))
-        except Exception as e:
-            self.out.clear_and_write("Error: " + str(e))
-
-    def on_prop(self):
-        try:
-            n = int(self.dimN.text())
-            def read_tbl(tbl: MatrixTable):
-                A = tbl.to_matrix()
-                if len(A) != 1 or len(A[0]) != n:
-                    raise ValueError("La dimensión de los vectores no coincide con n.")
-                return A[0]
-            v = read_tbl(self.tbl_v)
-            u = read_tbl(self.tbl_u)
-            w = read_tbl(self.tbl_w)
-            a = float(evaluar_expresion(self.a_edit.text(), exacto=False))
-            b = float(evaluar_expresion(self.b_edit.text(), exacto=False))
-
+            v = self.v_in_prn.to_vector()
+            u = self.u_in_prn.to_vector()
+            w = self.w_in_prn.to_vector()
+            a = float(evaluar_expresion(self.a_in_prn.text()))
+            b = float(evaluar_expresion(self.b_in_prn.text()))
             res = verificar_propiedades(v, u, w, a, b)
-            lines = ["--- Verificación de propiedades en R^n ---"]
+            lines = ["--- Verificación de Propiedades ---"]
             for k, val in res.items():
-                lines.append(f"{k}: {val}")
-            self.out.clear_and_write("\n".join(lines))
+                lines.append(f"{k.replace('_', ' '):<20}: {'✔️ Cumplida' if val else '❌ No Cumplida'}")
+            self._set_text("\n".join(lines))
         except Exception as e:
-            self.out.clear_and_write("Error: " + str(e))
+            self._set_text(f"Error: {e}")
+
+    # --- Página 2: Distributiva ---
+    def _create_distributiva_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.m_in_dist = LabeledEdit("Filas de A (m):", "2", default_value="2")
+        self.n_in_dist = LabeledEdit("Columnas de A (n):", "3", default_value="3")
+        dims.addWidget(self.m_in_dist)
+        dims.addWidget(self.n_in_dist)
+        self.A_in_dist = MatrixTable(2, 3, "Matriz A")
+        self.u_in_dist = VectorInputTable("Vector u (tamaño n)", 3)
+        self.v_in_dist = VectorInputTable("Vector v (tamaño n)", 3)
+        run_btn = btn("Verificar Propiedad Distributiva")
+        run_btn.clicked.connect(self.on_run_distributiva)
+        layout.addLayout(dims)
+        layout.addWidget(self.A_in_dist)
+        layout.addWidget(self.u_in_dist)
+        layout.addWidget(self.v_in_dist)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        self.m_in_dist.edit.textChanged.connect(self._sync_dist)
+        self.n_in_dist.edit.textChanged.connect(self._sync_dist)
+        self._sync_dist()
+        return page
+
+    def _sync_dist(self):
+        try:
+            m, n = int(self.m_in_dist.text()), int(self.n_in_dist.text())
+            self.A_in_dist.set_size(m, n)
+            self.u_in_dist.set_size(n)
+            self.v_in_dist.set_size(n)
+        except ValueError: pass
+
+    def on_run_distributiva(self):
+        try:
+            A = self.A_in_dist.to_matrix()
+            u = self.u_in_dist.to_vector()
+            v = self.v_in_dist.to_vector()
+            out = verificar_distributiva_matriz(A, u, v)
+            self._set_text("\n".join(out["pasos"]))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+    # --- Página 3: Combinación Lineal ---
+    def _create_comb_lineal_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.k_in_cl = LabeledEdit("k (n° vectores):", "2", default_value="2")
+        self.n_in_cl = LabeledEdit("n (dimensión):", "3", default_value="3")
+        dims.addWidget(self.k_in_cl)
+        dims.addWidget(self.n_in_cl)
+        self.V_in_cl = MatrixTable(2, 3, "Lista de vectores v₁..vₖ (k filas, n columnas)")
+        self.c_in_cl = VectorInputTable("Coeficientes c (k valores)", 2)
+        run_btn = btn("Calcular Combinación")
+        run_btn.clicked.connect(self.on_run_comb_lineal)
+        layout.addLayout(dims)
+        layout.addWidget(self.V_in_cl)
+        layout.addWidget(self.c_in_cl)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        self.k_in_cl.edit.textChanged.connect(self._sync_cl)
+        self.n_in_cl.edit.textChanged.connect(self._sync_cl)
+        self._sync_cl()
+        return page
+
+    def _sync_cl(self):
+        try:
+            k, n = int(self.k_in_cl.text()), int(self.n_in_cl.text())
+            self.V_in_cl.set_size(k, n)
+            self.c_in_cl.set_size(k)
+        except ValueError: pass
+
+    def on_run_comb_lineal(self):
+        try:
+            V = self.V_in_cl.to_matrix()
+            coef = self.c_in_cl.to_vector()
+            out = combinacion_lineal_explicada(V, coef, dec=4)
+            self._set_text(f"{out['texto']}\n\nComo lista: {out['resultado']}")
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+    # --- Página 4: Ecuación Vectorial ---
+    def _create_ecu_vec_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        dims = QtWidgets.QHBoxLayout()
+        self.k_in_ev = LabeledEdit("k (n° vectores):", "2", default_value="2")
+        self.n_in_ev = LabeledEdit("n (dimensión):", "3", default_value="3")
+        dims.addWidget(self.k_in_ev)
+        dims.addWidget(self.n_in_ev)
+        self.V_in_ev = MatrixTable(2, 3, "Lista de vectores v₁..vₖ (k filas, n columnas)")
+        self.b_in_ev = VectorInputTable("Vector b (n valores)", 3)
+        run_btn = btn("Resolver Ecuación Vectorial")
+        run_btn.clicked.connect(self.on_run_ecu_vec)
+        layout.addLayout(dims)
+        layout.addWidget(self.V_in_ev)
+        layout.addWidget(self.b_in_ev)
+        layout.addWidget(run_btn)
+        layout.addStretch(1)
+        self.k_in_ev.edit.textChanged.connect(self._sync_ev)
+        self.n_in_ev.edit.textChanged.connect(self._sync_ev)
+        self._sync_ev()
+        return page
+
+    def _sync_ev(self):
+        try:
+            k, n = int(self.k_in_ev.text()), int(self.n_in_ev.text())
+            self.V_in_ev.set_size(k, n)
+            self.b_in_ev.set_size(n)
+        except ValueError: pass
+
+    def on_run_ecu_vec(self):
+        try:
+            V = self.V_in_ev.to_matrix()
+            bvals = self.b_in_ev.to_vector()
+            out = ecuacion_vectorial(V, bvals)
+            lines = [p + "\n" for p in out.get("reportes", [])]
+            lines.append(f"Estado: {out.get('tipo') or out.get('estado')}\n")
+            lines.append(formatear_solucion_parametrica(out, dec=4, fracciones=True))
+            self._set_text("\n".join(lines))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
 
 # =========================
-#   Programa 5 (Matrices) — con nuevas propiedades
+#   Programa 5 (Matrices) — con cálculo elemento a elemento
 # =========================
 class TabProg5(QtWidgets.QWidget):
+    """Programa 5 — Operaciones con matrices y verificación de propiedades de la traspuesta."""
     def __init__(self, parent=None):
         super().__init__(parent)
         main = QtWidgets.QVBoxLayout(self)
@@ -719,42 +1065,61 @@ class TabProg5(QtWidgets.QWidget):
         self.k_edit = QtWidgets.QLineEdit("1")
         self.k_edit.setValidator(QtGui.QDoubleValidator())
         self.k_edit.setMaximumWidth(120)
-        top.addWidget(QtWidgets.QLabel("r ="))   # <- texto cambiado a 'r'
-        top.addWidget(self.k_edit)
+        top.addWidget(QtWidgets.QLabel("r =")); top.addWidget(self.k_edit)
         top.addStretch(1)
         main.addLayout(top)
 
         center = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+
         left = QtWidgets.QWidget(); ll = QtWidgets.QVBoxLayout(left); ll.setContentsMargins(0,0,0,0)
         self.tblA = MatrixTable(2,2,"Matriz A")
         self.tblB = MatrixTable(2,2,"Matriz B")
         btnsAB = QtWidgets.QHBoxLayout()
-        self.btn_fill = btn("Rellenar ceros"); self.btn_clear = btn("Limpiar")
+        self.btn_fill = btn("Rellenar ceros")
+        self.btn_clear = btn("Limpiar")
         btnsAB.addWidget(self.btn_fill); btnsAB.addWidget(self.btn_clear); btnsAB.addStretch(1)
         ll.addWidget(self.tblA); ll.addWidget(self.tblB); ll.addLayout(btnsAB)
 
         right = QtWidgets.QWidget(); rl = QtWidgets.QVBoxLayout(right); rl.setContentsMargins(6,0,0,0)
-        ops = QtWidgets.QHBoxLayout()
+        ops_layout = QtWidgets.QGridLayout()
         self.btn_sum = btn("A + B")
         self.btn_res = btn("A - B")
         self.btn_kA  = btn("r · A")
         self.btn_AB  = btn("A · B")
-        self.btn_AT  = btn("A^T (prop.)")
-        self.btn_ATT   = btn("(A^T)^T = A")                  # <- NUEVO
-        self.btn_rSumT = btn("(r(A+B))^T = r(A^T+B^T)")      # <- NUEVO
-        for b in (self.btn_sum, self.btn_res, self.btn_kA, self.btn_AB, self.btn_AT, self.btn_ATT, self.btn_rSumT):
-            ops.addWidget(b)
-        ops.addStretch(1); rl.addLayout(ops)
+        self.btn_AT  = btn("A^T")
+        self.btn_ATT = btn("Verificar (A^T)^T = A")
+        self.btn_rSumT = btn("Verificar (r(A+B))^T")
+        ops_layout.addWidget(self.btn_sum, 0, 0)
+        ops_layout.addWidget(self.btn_res, 0, 1)
+        ops_layout.addWidget(self.btn_kA, 0, 2)
+        ops_layout.addWidget(self.btn_AB, 0, 3)
+        ops_layout.addWidget(self.btn_AT, 1, 0)
+        ops_layout.addWidget(self.btn_ATT, 1, 1)
+        ops_layout.addWidget(self.btn_rSumT, 1, 2, 1, 2)
+        rl.addLayout(ops_layout)
 
-        self.out = OutputArea(); rl.addWidget(self.out)
-        center.addWidget(left); center.addWidget(right)
-        center.setStretchFactor(0, 1); center.setStretchFactor(1, 1)
+        self.out = OutputArea()
+        rl.addWidget(self.out)
+
+        # === Botón global de formato (pestaña) ===
+        self._show_frac = False
+        self._last_dec = ""
+        self._last_frac = ""
+        self.btn_fmt = btn("Cambiar a fracciones")
+        rl.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.btn_fmt.clicked.connect(self._toggle_fmt)
+
+        center.addWidget(left)
+        center.addWidget(right)
+        center.setStretchFactor(0, 1)
+        center.setStretchFactor(1, 1)
         main.addWidget(center)
 
         self.sp_m.valueChanged.connect(self._sync_A)
         self.sp_n.valueChanged.connect(self._sync_A)
         self.sp_r.valueChanged.connect(self._sync_B)
         self.sp_p.valueChanged.connect(self._sync_B)
+
         self.btn_fill.clicked.connect(self._fill_zeros)
         self.btn_clear.clicked.connect(self._clear_all)
         self.btn_sum.clicked.connect(self.on_sum)
@@ -762,48 +1127,80 @@ class TabProg5(QtWidgets.QWidget):
         self.btn_kA.clicked.connect(self.on_kA)
         self.btn_AB.clicked.connect(self.on_AB)
         self.btn_AT.clicked.connect(self.on_AT)
-        self.btn_ATT.clicked.connect(self.on_ATT_prop)        # <- NUEVO
-        self.btn_rSumT.clicked.connect(self.on_rSumT_prop)    # <- NUEVO
+        self.btn_ATT.clicked.connect(self.on_ATT_prop)
+        self.btn_rSumT.clicked.connect(self.on_rSumT_prop)
+
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self, activated=self.on_sum)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self, activated=self.on_sum)
+
         self.sp_n.valueChanged.connect(lambda v: self.sp_r.setValue(v))
         self._sync_A(); self._sync_B()
 
-    def _sync_A(self): self.tblA.set_size(self.sp_m.value(), self.sp_n.value())
-    def _sync_B(self): self.tblB.set_size(self.sp_r.value(), self.sp_p.value())
-    def _fill_zeros(self): self.tblA.fill_zeros(); self.tblB.fill_zeros()
-    def _clear_all(self): self.tblA.clear_all(); self.tblB.clear_all(); self.out.clear_and_write("")
+    # helpers formato
+    def _set_text(self, base_text: str):
+        self._last_dec = text_to_decimals(base_text)
+        self._last_frac = text_to_fractions(base_text)
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    def _toggle_fmt(self):
+        self._show_frac = not self._show_frac
+        self.btn_fmt.setText("Cambiar a decimales" if self._show_frac else "Cambiar a fracciones")
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    def _sync_A(self):
+        self.tblA.set_size(self.sp_m.value(), self.sp_n.value())
+
+    def _sync_B(self):
+        self.tblB.set_size(self.sp_r.value(), self.sp_p.value())
+
+    def _fill_zeros(self):
+        self.tblA.fill_zeros(); self.tblB.fill_zeros()
+
+    def _clear_all(self):
+        self.tblA.clear_all(); self.tblB.clear_all(); self._set_text("")
+
     def _k_value(self) -> float:
         t = self.k_edit.text().strip() or "0"
         return float(evaluar_expresion(t, exacto=False))
-    def _print(self, lines: list[str]): self.out.clear_and_write("\n".join(lines))
+
+    def _print(self, lines: list[str]):
+        self._set_text("\n".join(lines))
 
     def on_sum(self):
         try:
-            A = self.tblA.to_matrix(); B = self.tblB.to_matrix()
+            A = self.tblA.to_matrix()
+            B = self.tblB.to_matrix()
             out = suma_matrices_explicada(A, B)
-            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado C = A + B:", format_matrix_text(out["resultado"]), "", "( A + B )^T:", format_matrix_text(out["traspuesta_del_resultado"]), "", "A^T:", format_matrix_text(out["AT"]), "", "B^T:", format_matrix_text(out["BT"]), "", "A^T + B^T:", format_matrix_text(out["AT_mas_BT"]), "", "— Cálculo elemento a elemento —"]
-            lines += explain_sum(A, B) + ["", ">>> " + out["conclusion"]]
+            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado C = A + B:", format_matrix_text(out["resultado"]), ""]
+            lines += ["--- Verificación de Propiedad ---", "(A + B)^T:", format_matrix_text(out["traspuesta_del_resultado"])]
+            lines += ["", "A^T:", format_matrix_text(out["AT"]), "", "B^T:", format_matrix_text(out["BT"])]
+            lines += ["", "A^T + B^T:", format_matrix_text(out["AT_mas_BT"]), "", ">>> " + out["conclusion"]]
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
 
     def on_res(self):
         try:
-            A = self.tblA.to_matrix(); B = self.tblB.to_matrix()
+            A = self.tblA.to_matrix()
+            B = self.tblB.to_matrix()
             out = resta_matrices_explicada(A, B)
-            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado C = A - B:", format_matrix_text(out["resultado"]), "", "( A - B )^T:", format_matrix_text(out["traspuesta_del_resultado"]), "", "A^T:", format_matrix_text(out["AT"]), "", "B^T:", format_matrix_text(out["BT"]), "", "A^T - B^T:", format_matrix_text(out["AT_menos_BT"]), "", "— Cálculo elemento a elemento —"]
-            lines += explain_res(A, B) + ["", ">>> " + out["conclusion"]]
+            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado C = A - B:", format_matrix_text(out["resultado"]), ""]
+            lines += ["--- Verificación de Propiedad ---", "(A - B)^T:", format_matrix_text(out["traspuesta_del_resultado"])]
+            lines += ["", "A^T:", format_matrix_text(out["AT"]), "", "B^T:", format_matrix_text(out["BT"])]
+            lines += ["", "A^T - B^T:", format_matrix_text(out["AT_menos_BT"]), "", ">>> " + out["conclusion"]]
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
 
     def on_kA(self):
         try:
-            A = self.tblA.to_matrix(); r = self._k_value()
+            A = self.tblA.to_matrix()
+            r = self._k_value()
             out = producto_escalar_explicado(r, A)
-            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado r·A:", format_matrix_text(out["resultado"]), "", "( rA )^T:", format_matrix_text(out["traspuesta_del_resultado"]), "", "A^T:", format_matrix_text(out["AT"]), "", "r·A^T:", format_matrix_text(out["kAT"]), "", "— Cálculo elemento a elemento —"]
-            lines += explain_kA(r, A) + ["", ">>> " + out["conclusion"]]
+            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado r·A:", format_matrix_text(out["resultado"]), ""]
+            lines += ["--- Verificación de Propiedad ---", "(rA)^T:", format_matrix_text(out["traspuesta_del_resultado"])]
+            lines += ["", "A^T:", format_matrix_text(out["AT"]), "", "r·A^T:", format_matrix_text(out["kAT"])]
+            lines += ["", ">>> " + out["conclusion"]]
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
@@ -812,10 +1209,13 @@ class TabProg5(QtWidgets.QWidget):
         try:
             if self.sp_r.value() != self.sp_n.value():
                 raise ValueError("Para A·B se requiere filas(B) = columnas(A). Ajusta los spinners.")
-            A = self.tblA.to_matrix(); B = self.tblB.to_matrix()
+            A = self.tblA.to_matrix()
+            B = self.tblB.to_matrix()
             out = producto_matrices_explicado(A, B)
-            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado C = A·B:", format_matrix_text(out["resultado"]), "", "( AB )^T:", format_matrix_text(out["traspuesta_del_resultado"]), "", "B^T:", format_matrix_text(out["BT"]), "", "A^T:", format_matrix_text(out["AT"]), "", "B^T·A^T:", format_matrix_text(out["BT_por_AT"]), "", "— Cálculo elemento a elemento —"]
-            lines += explain_AB(A, B) + ["", ">>> " + out["conclusion"]]
+            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado C = A·B:", format_matrix_text(out["resultado"]), ""]
+            lines += ["--- Verificación de Propiedad ---", "(AB)^T:", format_matrix_text(out["traspuesta_del_resultado"])]
+            lines += ["", "B^T:", format_matrix_text(out["BT"]), "", "A^T:", format_matrix_text(out["AT"])]
+            lines += ["", "B^T·A^T:", format_matrix_text(out["BT_por_AT"]), "", ">>> " + out["conclusion"]]
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
@@ -824,91 +1224,60 @@ class TabProg5(QtWidgets.QWidget):
         try:
             A = self.tblA.to_matrix()
             out = traspuesta_explicada(A)
-            lines = ["--- Pasos ---"] + out["pasos"] + ["", "A^T:", format_matrix_text(out["resultado"]), "", ">>> " + out["conclusion"]]
+            lines = ["--- Pasos ---", "Se intercambian filas por columnas."]
+            lines += ["", "Resultado A^T:", format_matrix_text(out["resultado"])]
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
 
-    # --- NUEVOS HANDLERS ---
     def on_ATT_prop(self):
-        """Muestra procedimiento para (A^T)^T = A usando traspuesta_explicada."""
         try:
             A = self.tblA.to_matrix()
-            out = traspuesta_explicada(A)  # ya verifica (A^T)^T = A
-            lines = ["--- (A^T)^T = A — procedimiento ---"]
+            out = traspuesta_explicada(A)
+            lines = ["--- Verificación de (A^T)^T = A ---"]
             lines += out["pasos"]
             lines += [
-                "",
-                "A^T:",
-                format_matrix_text(out["resultado"]),
-                "",
-                "(A^T)^T:",
-                format_matrix_text(out["ATT"]),
-                "",
-                ">>> " + out["conclusion"]
+                "", "A^T:", format_matrix_text(out["resultado"]),
+                "", "(A^T)^T:", format_matrix_text(out["ATT"]),
+                "", ">>> " + out["conclusion"]
             ]
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
 
     def on_rSumT_prop(self):
-        """Muestra procedimiento para (r(A+B))^T = r(A^T + B^T)."""
         try:
             A = self.tblA.to_matrix()
             B = self.tblB.to_matrix()
             r = self._k_value()
             out = propiedad_r_suma_traspuesta_explicada(A, B, r)
-
-            lines = ["--- ( r (A + B) )^T = r ( A^T + B^T ) — procedimiento ---"]
+            lines = ["--- Verificación de (r(A+B))^T = r(A^T+B^T) ---"]
             lines += out["pasos"]
             lines += [
-                "",
-                "S = A + B:",
-                format_matrix_text(out["S"]),
-                "",
-                "r·S:",
-                format_matrix_text(out["rS"]),
-                "",
-                "Izquierda  ( r (A + B) )^T:",
-                format_matrix_text(out["izquierda"]),
-                "",
-                "A^T:",
-                format_matrix_text(out["AT"]),
-                "",
-                "B^T:",
-                format_matrix_text(out["BT"]),
-                "",
-                "A^T + B^T:",
-                format_matrix_text(out["AT_mas_BT"]),
-                "",
-                "Derecha  r·(A^T + B^T):",
-                format_matrix_text(out["derecha"]),
-                "",
-                ">>> " + out["conclusion"]
+                "", "Lado Izquierdo (r(A+B))^T:", format_matrix_text(out["izquierda"]),
+                "", "Lado Derecho r(A^T+B^T):", format_matrix_text(out["derecha"]),
+                "", ">>> " + out["conclusion"]
             ]
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
 
 # =========================
-#   Programa 6 (opcional)
+#   Programa 6 (Inversa: Gauss–Jordan + propiedades) — botón global por pestaña
 # =========================
 class TabProg6(QtWidgets.QWidget):
-    """Programa 6 — Inversa de una matriz por Gauss–Jordan + verificación de (c)(d)(e)."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        if not HAS_P6:
-            lay = QtWidgets.QVBoxLayout(self)
-            lab = QtWidgets.QLabel("El módulo 'inversa.py' no está disponible.")
-            lay.addWidget(lab)
-            return
-
         root = QtWidgets.QVBoxLayout(self)
+
+        # --- fila superior ---
         top = QtWidgets.QHBoxLayout()
         self.sp_n = QtWidgets.QSpinBox(); self.sp_n.setRange(1, 50); self.sp_n.setValue(2)
-        top.addWidget(QtWidgets.QLabel("n:")); top.addWidget(self.sp_n); top.addStretch(1)
+        top.addWidget(QtWidgets.QLabel("n:")); top.addWidget(self.sp_n)
+        top.addStretch(1)
         root.addLayout(top)
 
+        # --- centro: tabla (izq) + conclusiones (der) ---
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         left = QtWidgets.QWidget(); ll = QtWidgets.QVBoxLayout(left); ll.setContentsMargins(0,0,0,0)
         self.tblA = MatrixTable(2, 2, "Matriz A (n×n)")
@@ -918,29 +1287,44 @@ class TabProg6(QtWidgets.QWidget):
         self.summary = OutputArea()
         rl.addWidget(self.summary)
 
-        splitter.addWidget(left); splitter.addWidget(right)
-        splitter.setStretchFactor(0, 1); splitter.setStretchFactor(1, 2)
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
         root.addWidget(splitter)
 
+        # --- barra de acciones ---
         actions = QtWidgets.QHBoxLayout()
         self.btn_inv   = btn("Calcular A^{-1} y |A|")
         self.btn_props = btn("Verificar propiedades (c)(d)(e)")
         self.btn_all   = btn("Todo junto")
         self.btn_clear = btn("Limpiar")
         actions.addStretch(1)
-        for b in (self.btn_inv, self.btn_props, self.btn_all, self.btn_clear): actions.addWidget(b)
+        for b in (self.btn_inv, self.btn_props, self.btn_all, self.btn_clear):
+            actions.addWidget(b)
         actions.addStretch(1)
         root.addLayout(actions)
 
+        # --- panel inferior: TODO el procedimiento Gauss–Jordan ---
         self.steps_all = OutputArea()
         self.steps_all.setPlaceholderText("Aquí se mostrará TODO el procedimiento de Gauss–Jordan sobre [A | I].")
         root.addWidget(self.steps_all)
 
+        # === Botón global de formato (pestaña) — controla summary y steps ===
+        self._show_frac = False
+        self._sum_dec = ""; self._sum_frac = ""
+        self._steps_dec = ""; self._steps_frac = ""
+        self.btn_fmt = btn("Cambiar a fracciones")
+        root.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.btn_fmt.clicked.connect(self._toggle_fmt)
+
+        # conexiones / atajos
         self.sp_n.valueChanged.connect(self._sync_n)
         self.btn_clear.clicked.connect(self._clear_all)
         self.btn_inv.clicked.connect(self.on_inv)
         self.btn_props.clicked.connect(self.on_props)
         self.btn_all.clicked.connect(self.on_all)
+
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+I"), self, activated=self.on_inv)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+P"), self, activated=self.on_props)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+T"), self, activated=self.on_all)
@@ -948,18 +1332,41 @@ class TabProg6(QtWidgets.QWidget):
 
         self._sync_n()
 
-    def _sync_n(self): 
-        if HAS_P6: self.tblA.set_size(self.sp_n.value(), self.sp_n.value())
+    # ---------- utilidades ----------
+    def _sync_n(self):
+        self.tblA.set_size(self.sp_n.value(), self.sp_n.value())
+
     def _clear_all(self):
-        if not HAS_P6: return
-        self.tblA.clear_all(); self.summary.clear_and_write(""); self.steps_all.clear_and_write("")
+        self.tblA.clear_all()
+        self._set_summary("")
+        self._set_steps("")
+
     def _A(self):
-        n = self.sp_n.value(); A = self.tblA.to_matrix()
-        if len(A) != n or len(A[0]) != n: raise ValueError("A debe ser cuadrada n×n.")
+        n = self.sp_n.value()
+        A = self.tblA.to_matrix()
+        if len(A) != n or len(A[0]) != n:
+            raise ValueError("A debe ser cuadrada n×n.")
         return A
 
+    # helpers formato
+    def _set_summary(self, base_text: str):
+        self._sum_dec  = text_to_decimals(base_text)
+        self._sum_frac = text_to_fractions(base_text)
+        self.summary.clear_and_write(self._sum_frac if self._show_frac else self._sum_dec)
+
+    def _set_steps(self, base_text: str):
+        self._steps_dec  = text_to_decimals(base_text)
+        self._steps_frac = text_to_fractions(base_text)
+        self.steps_all.clear_and_write(self._steps_frac if self._show_frac else self._steps_dec)
+
+    def _toggle_fmt(self):
+        self._show_frac = not self._show_frac
+        self.btn_fmt.setText("Cambiar a decimales" if self._show_frac else "Cambiar a fracciones")
+        self.summary.clear_and_write(self._sum_frac if self._show_frac else self._sum_dec)
+        self.steps_all.clear_and_write(self._steps_frac if self._show_frac else self._steps_dec)
+
+    # ---------- acciones ----------
     def on_inv(self):
-        if not HAS_P6: return
         try:
             A = self._A()
             inv = inversa_por_gauss_jordan(A, dec=4)
@@ -970,34 +1377,38 @@ class TabProg6(QtWidgets.QWidget):
             lines += ["Conclusión:", inv.get("conclusion","")]
             if inv.get("estado") == "ok":
                 lines += ["", "A^{-1} =", format_matrix_text(inv["Ainv"])]
-            self.summary.clear_and_write("\n".join(lines))
+            self._set_summary("\n".join(lines))
 
             pasos = inv.get("pasos", [])
-            self.steps_all.clear_and_write("\n\n".join(pasos) if pasos else "(No se generaron pasos.)")
+            self._set_steps("\n\n".join(pasos) if pasos else "(No se generaron pasos.)")
+
         except Exception as e:
-            self.summary.clear_and_write("Error: " + str(e))
-            self.steps_all.clear_and_write("")
+            self._set_summary("Error: " + str(e))
+            self._set_steps("")
 
     def on_props(self):
-        if not HAS_P6: return
         try:
             A = self._A()
             props = verificar_propiedades_invertibilidad(A, dec=4)
+
             lines = []
             lines += ["=== Propiedades (c)(d)(e) ===", ""]
-            lines += [f"Pivotes (1-index): {props.get('pivotes')}",
-                      f"Rango: {props.get('rango')}",
-                      f"Columnas libres (1-index): {props.get('libres')}", ""]
-            lines += ["--- Resumen ---", props.get("explicacion",""), ""]
-            lines += ["--- Justificación ---", props.get("explicacion_detallada","")]
-            self.summary.clear_and_write("\n".join(lines))
-            self.steps_all.clear_and_write("(Ejecuta 'Calcular A^{-1} y |A|' o 'Todo junto' para ver el procedimiento).")
+            lines += [f"Pivotes (1-index): {props.get('pivotes', 'N/A')}",
+                      f"Rango: {props.get('rango', 'N/A')}", ""]
+            lines += [props.get("explicacion", "No se pudo generar la explicación.")]
+            
+            if props.get("detalle_sistema_homogeneo"):
+                lines.append("\n--- Detalles del sistema homogéneo Ax=0 ---")
+                lines.append(formatear_solucion_parametrica(props["detalle_sistema_homogeneo"]))
+                
+            self._set_summary("\n".join(lines))
+            self._set_steps("(Ejecuta 'Calcular A^{-1} y |A|' o 'Todo junto' para ver el procedimiento).")
+
         except Exception as e:
-            self.summary.clear_and_write("Error: " + str(e))
-            self.steps_all.clear_and_write("")
+            self._set_summary("Error: " + str(e))
+            self._set_steps("")
 
     def on_all(self):
-        if not HAS_P6: return
         try:
             A = self._A()
             full = programa_inversa_con_propiedades(A, dec=4)
@@ -1010,15 +1421,15 @@ class TabProg6(QtWidgets.QWidget):
             if inv.get("estado") == "ok":
                 lines += ["", "A^{-1} =", format_matrix_text(inv["Ainv"])]
             lines += ["", "--- Propiedades (c)(d)(e) ---", props.get("explicacion",""), ""]
-            lines += ["--- Justificación ---", props.get("explicacion_detallada",""), ""]
             lines += ["Conclusión global:", full.get("conclusion_global","")]
-            self.summary.clear_and_write("\n".join(lines))
+            self._set_summary("\n".join(lines))
 
             pasos = inv.get("pasos", [])
-            self.steps_all.clear_and_write("\n\n".join(pasos) if pasos else "(No se generaron pasos.)")
+            self._set_steps("\n\n".join(pasos) if pasos else "(No se generaron pasos.)")
+
         except Exception as e:
-            self.summary.clear_and_write("Error: " + str(e))
-            self.steps_all.clear_and_write("")
+            self._set_summary("Error: " + str(e))
+            self._set_steps("")
 
 # =========================
 #   Ventana principal
@@ -1027,7 +1438,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Álgebra Lineal — GUI (PyQt6)")
-        self.resize(1100, 780)
+        self.resize(1200, 820)
 
         tabs = QtWidgets.QTabWidget()
         tabs.addTab(TabGaussJordan(), "Gauss-Jordan (Ab)")
@@ -1035,8 +1446,7 @@ class MainWindow(QtWidgets.QMainWindow):
         tabs.addTab(TabProg4(), "Programa 4")
         tabs.addTab(TabVectores(), "Vectores")
         tabs.addTab(TabProg5(), "Operaciones con Matrices")
-        if HAS_P6:
-            tabs.addTab(TabProg6(), "Inversa")
+        tabs.addTab(TabProg6(), "Inversa")   
 
         self.setCentralWidget(tabs)
         self.statusBar().showMessage("Listo")
@@ -1047,6 +1457,7 @@ class MainWindow(QtWidgets.QMainWindow):
 def main():
     app = QtWidgets.QApplication(sys.argv)
 
+    # Tema claro (blanco-gris)
     palette = QtGui.QPalette()
     base_color = QtGui.QColor(245, 245, 245)
     text_color = QtGui.QColor(20, 20, 20)
