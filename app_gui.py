@@ -78,6 +78,46 @@ def parse_augmented(text: str, m: int, n: int) -> List[List[float]]:
             raise ValueError(f"Fila {i}: se esperaban {n+1} valores (coeficientes y b).")
         Ab.append(nums)
     return Ab
+def explain_rsumT_left(A, B, r):
+    """
+    Detalle para el lado izquierdo: L = (r(A+B))^T.
+    L[i,j] = r * (A[j,i] + B[j,i]).
+    """
+    m, n = len(A), len(A[0])
+    lines = []
+    for i in range(n):       # filas de L
+        for j in range(m):   # cols de L
+            aji = A[j][i]
+            bji = B[j][i]
+            suma = aji + bji
+            val  = r * suma
+            lines.append(
+                f"L[{i+1},{j+1}] = r·(A[{j+1},{i+1}] + B[{j+1},{i+1}]) = "
+                f"{_num(r)}·({_num(aji)} + {_num(bji)}) = {_num(r)}·{_num(suma)} = {_num(val)}"
+            )
+    return lines
+
+def explain_rsumT_right(A, B, r):
+    """
+    Detalle para el lado derecho: R = r(A^T + B^T).
+    R[i,j] = r * (A[j,i] + B[j,i]).
+    (Misma expresión numérica pero mostramos que proviene de A^T y B^T.)
+    """
+    m, n = len(A), len(A[0])
+    lines = []
+    for i in range(n):       # filas de R
+        for j in range(m):   # cols de R
+            aT = A[j][i]
+            bT = B[j][i]
+            suma = aT + bT
+            val  = r * suma
+            lines.append(
+                f"R[{i+1},{j+1}] = r·(A^T[{i+1},{j+1}] + B^T[{i+1},{j+1}]) = "
+                f"{_num(r)}·(A[{j+1},{i+1}] + B[{j+1},{i+1}]) = "
+                f"{_num(r)}·({_num(aT)} + {_num(bT)}) = {_num(r)}·{_num(suma)} = {_num(val)}"
+            )
+    return lines
+
 
 def parse_list_vectors(text: str, k: int, n: int) -> List[List[float]]:
     rows = [ln for ln in text.splitlines() if ln.strip() != ""]
@@ -728,6 +768,7 @@ def explain_AB(A, B):
             )
     return lines
 
+
 # =========================
 #   Pestañas existentes
 # =========================
@@ -1360,6 +1401,7 @@ class TabProg5(QtWidgets.QWidget):
         center.setStretchFactor(1, 1)
         main.addWidget(center)
 
+        # Conexiones
         self.sp_m.valueChanged.connect(self._sync_A)
         self.sp_n.valueChanged.connect(self._sync_A)
         self.sp_r.valueChanged.connect(self._sync_B)
@@ -1411,15 +1453,20 @@ class TabProg5(QtWidgets.QWidget):
     def _print(self, lines: list[str]):
         self._set_text("\n".join(lines))
 
+    # ======= Operaciones con detalle elemento a elemento =======
     def on_sum(self):
         try:
             A = self.tblA.to_matrix()
             B = self.tblB.to_matrix()
             out = suma_matrices_explicada(A, B)
-            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado C = A + B:", format_matrix_text(out["resultado"]), ""]
+            detalle = explain_sum(A, B)
+
+            lines = ["--- Pasos ---"] + out["pasos"]
+            lines += ["", "Resultado C = A + B:", format_matrix_text(out["resultado"]), ""]
             lines += ["--- Verificación de Propiedad ---", "(A + B)^T:", format_matrix_text(out["traspuesta_del_resultado"])]
             lines += ["", "A^T:", format_matrix_text(out["AT"]), "", "B^T:", format_matrix_text(out["BT"])]
             lines += ["", "A^T + B^T:", format_matrix_text(out["AT_mas_BT"]), "", ">>> " + out["conclusion"]]
+            lines += ["", "--- Cálculo elemento a elemento (C[i,j]) ---"] + detalle
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
@@ -1429,10 +1476,14 @@ class TabProg5(QtWidgets.QWidget):
             A = self.tblA.to_matrix()
             B = self.tblB.to_matrix()
             out = resta_matrices_explicada(A, B)
-            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado C = A - B:", format_matrix_text(out["resultado"]), ""]
+            detalle = explain_res(A, B)
+
+            lines = ["--- Pasos ---"] + out["pasos"]
+            lines += ["", "Resultado C = A - B:", format_matrix_text(out["resultado"]), ""]
             lines += ["--- Verificación de Propiedad ---", "(A - B)^T:", format_matrix_text(out["traspuesta_del_resultado"])]
             lines += ["", "A^T:", format_matrix_text(out["AT"]), "", "B^T:", format_matrix_text(out["BT"])]
             lines += ["", "A^T - B^T:", format_matrix_text(out["AT_menos_BT"]), "", ">>> " + out["conclusion"]]
+            lines += ["", "--- Cálculo elemento a elemento (C[i,j]) ---"] + detalle
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
@@ -1442,10 +1493,14 @@ class TabProg5(QtWidgets.QWidget):
             A = self.tblA.to_matrix()
             r = self._k_value()
             out = producto_escalar_explicado(r, A)
-            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado r·A:", format_matrix_text(out["resultado"]), ""]
+            detalle = explain_kA(r, A)
+
+            lines = ["--- Pasos ---"] + out["pasos"]
+            lines += ["", "Resultado r·A:", format_matrix_text(out["resultado"]), ""]
             lines += ["--- Verificación de Propiedad ---", "(rA)^T:", format_matrix_text(out["traspuesta_del_resultado"])]
             lines += ["", "A^T:", format_matrix_text(out["AT"]), "", "r·A^T:", format_matrix_text(out["kAT"])]
             lines += ["", ">>> " + out["conclusion"]]
+            lines += ["", "--- Cálculo elemento a elemento (C[i,j]) ---"] + detalle
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
@@ -1457,14 +1512,19 @@ class TabProg5(QtWidgets.QWidget):
             A = self.tblA.to_matrix()
             B = self.tblB.to_matrix()
             out = producto_matrices_explicado(A, B)
-            lines = ["--- Pasos ---"] + out["pasos"] + ["", "Resultado C = A·B:", format_matrix_text(out["resultado"]), ""]
+            detalle = explain_AB(A, B)
+
+            lines = ["--- Pasos ---"] + out["pasos"]
+            lines += ["", "Resultado C = A·B:", format_matrix_text(out["resultado"]), ""]
             lines += ["--- Verificación de Propiedad ---", "(AB)^T:", format_matrix_text(out["traspuesta_del_resultado"])]
             lines += ["", "B^T:", format_matrix_text(out["BT"]), "", "A^T:", format_matrix_text(out["AT"])]
             lines += ["", "B^T·A^T:", format_matrix_text(out["BT_por_AT"]), "", ">>> " + out["conclusion"]]
+            lines += ["", "--- Cálculo elemento a elemento (C[i,j]) ---"] + detalle
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
 
+    # ======= Resto de botones de la pestaña (sin cambios de detalle) =======
     def on_AT(self):
         try:
             A = self.tblA.to_matrix()
@@ -1496,16 +1556,28 @@ class TabProg5(QtWidgets.QWidget):
             B = self.tblB.to_matrix()
             r = self._k_value()
             out = propiedad_r_suma_traspuesta_explicada(A, B, r)
+
+            # NUEVO: detalle elemento a elemento de ambos lados
+            det_izq = explain_rsumT_left(A, B, r)
+            det_der = explain_rsumT_right(A, B, r)
+
             lines = ["--- Verificación de (r(A+B))^T = r(A^T+B^T) ---"]
             lines += out["pasos"]
             lines += [
                 "", "Lado Izquierdo (r(A+B))^T:", format_matrix_text(out["izquierda"]),
-                "", "Lado Derecho r(A^T+B^T):", format_matrix_text(out["derecha"]),
-                "", ">>> " + out["conclusion"]
+                "", "Lado Derecho r(A^T+B^T):",  format_matrix_text(out["derecha"]),
+                "", ">>> " + out["conclusion"],
+                "", "--- Cálculo elemento a elemento (Lado Izquierdo) ---",
             ]
+            lines += det_izq
+            lines += ["", "--- Cálculo elemento a elemento (Lado Derecho) ---"]
+            lines += det_der
+
             self._print(lines)
         except Exception as e:
             self._print(["Error:", str(e)])
+
+
 
 # =========================
 #   Programa 6 (Inversa: Gauss–Jordan + propiedades) — botón global por pestaña

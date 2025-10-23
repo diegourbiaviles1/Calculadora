@@ -9,7 +9,7 @@ from fractions import Fraction
 #  Constantes globales
 # -------------------------
 DEFAULT_EPS: float = 1e-10
-DEFAULT_DEC: int = 4
+DEFAULT_DEC: int = 2
 
 # -------------------------
 #  Evaluador seguro
