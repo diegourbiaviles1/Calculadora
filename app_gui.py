@@ -168,9 +168,248 @@ def mono_font():
     f.setPointSize(10)
     return f
 
-def btn(text):
+def _disable_spin_wheel(sb: QtWidgets.QAbstractSpinBox):
+    # evita que cambie el valor con la rueda del mouse
+    def _no_wheel(event): 
+        event.ignore()
+    sb.wheelEvent = _no_wheel  # type: ignore
+
+def hide_all_spin_buttons(root: QtWidgets.QWidget):
+    """
+    Oculta los botones ↑↓ de TODOS los spin boxes del árbol y desactiva la rueda.
+    """
+    for sb in root.findChildren(QtWidgets.QAbstractSpinBox):
+        sb.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        _disable_spin_wheel(sb)
+
+def apply_green_theme(app: QtWidgets.QApplication):
+    """
+    Tema verde moderno: botones con hover/focus, tabs marcados en verde,
+    inputs y tablas con acentos verdes y esquinas redondeadas.
+    """
+    # ---- Paleta base clara con Highlights en verde ----
+    palette = QtGui.QPalette()
+    bg        = QtGui.QColor(246, 248, 246)       # casi blanco con tinte verde
+    panel     = QtGui.QColor(255, 255, 255)
+    text      = QtGui.QColor(28, 28, 28)
+    subtext   = QtGui.QColor(95, 95, 95)
+    green     = QtGui.QColor(34, 139, 34)         # forest green
+    greenDark = QtGui.QColor(22, 115, 22)
+    greenLite = QtGui.QColor(227, 245, 229)
+
+    palette.setColor(QtGui.QPalette.ColorRole.Window, bg)
+    palette.setColor(QtGui.QPalette.ColorRole.Base, panel)
+    palette.setColor(QtGui.QPalette.ColorRole.AlternateBase, QtGui.QColor(240, 243, 240))
+    palette.setColor(QtGui.QPalette.ColorRole.WindowText, text)
+    palette.setColor(QtGui.QPalette.ColorRole.Text, text)
+    palette.setColor(QtGui.QPalette.ColorRole.PlaceholderText, subtext)
+    palette.setColor(QtGui.QPalette.ColorRole.Button, panel)
+    palette.setColor(QtGui.QPalette.ColorRole.ButtonText, text)
+    palette.setColor(QtGui.QPalette.ColorRole.Highlight, green)
+    palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(255, 255, 255))
+    palette.setColor(QtGui.QPalette.ColorRole.ToolTipBase, QtGui.QColor(255, 255, 235))
+    palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, text)
+    app.setPalette(palette)
+    app.setStyle("Fusion")
+    app.setFont(QtGui.QFont("Segoe UI", 10))
+
+    # ---- Hoja de estilos (QSS) ----
+    app.setStyleSheet(f"""
+        /* Tipografía y fondos */
+        QWidget {{
+            font-size: 10.5pt;
+            color: rgb({text.red()},{text.green()},{text.blue()});
+            background-color: rgb({bg.red()},{bg.green()},{bg.blue()});
+        }}
+
+        QGroupBox {{
+            border: 1px solid rgba(0,0,0,20%);
+            border-radius: 10px;
+            margin-top: 12px;
+            background: rgb({panel.red()},{panel.green()},{panel.blue()});
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            padding: 4px 8px;
+            color: rgb({green.darker(120).red()},{green.darker(120).green()},{green.darker(120).blue()});
+            font-weight: 600;
+        }}
+
+        /* Botones */
+        QPushButton {{
+            border: 1px solid rgba(0,0,0,12%);
+            padding: 8px 14px;
+            border-radius: 10px;
+            background: rgb({panel.red()},{panel.green()},{panel.blue()});
+        }}
+        QPushButton:disabled {{
+            color: rgba(0,0,0,45%);
+            border-color: rgba(0,0,0,8%);
+            background: rgba(0,0,0,3%);
+        }}
+
+        /* Primary (VERDE) */
+        QPushButton#btn-primary {{
+            background: rgb({green.red()},{green.green()},{green.blue()});
+            border: 1px solid rgba(0,0,0,10%);
+            color: white;
+            font-weight: 600;
+        }}
+        QPushButton#btn-primary:hover {{
+            background: rgb({greenDark.red()},{greenDark.green()},{greenDark.blue()});
+        }}
+        QPushButton#btn-primary:pressed {{
+            background: rgb({greenDark.darker(115).red()},{greenDark.darker(115).green()},{greenDark.darker(115).blue()});
+        }}
+        QPushButton#btn-primary:focus {{
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(34,139,34,0.25);
+        }}
+
+        /* Ghost (secundario claro) */
+        QPushButton#btn-ghost {{
+            background: transparent;
+            border: 1px dashed rgba(0,0,0,22%);
+            color: rgb({text.red()},{text.green()},{text.blue()});
+        }}
+        QPushButton#btn-ghost:hover {{
+            background: rgba({green.red()},{green.green()},{green.blue()}, 0.08);
+            border-color: rgba({green.red()},{green.green()},{green.blue()}, 0.35);
+        }}
+        QPushButton#btn-ghost:pressed {{
+            background: rgba({green.red()},{green.green()},{green.blue()}, 0.14);
+        }}
+
+        /* Danger (rojo para acciones fuertes, por si lo usas) */
+        QPushButton#btn-danger {{
+            background: #d9534f;
+            color: white;
+            border: 1px solid rgba(0,0,0,10%);
+            font-weight: 600;
+        }}
+        QPushButton#btn-danger:hover {{ background: #c94541; }}
+
+        /* Entradas de texto */
+        QLineEdit, QPlainTextEdit, QTextEdit {{
+            background: rgb({panel.red()},{panel.green()},{panel.blue()});
+            border: 1px solid rgba(0,0,0,16%);
+            border-radius: 8px;
+            padding: 6px 8px;
+        }}
+        QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {{
+            border: 1px solid rgba({green.red()},{green.green()},{green.blue()}, 0.9);
+            box-shadow: 0 0 0 3px rgba({green.red()},{green.green()},{green.blue()}, 0.15);
+        }}
+
+        /* TabWidget */
+        QTabWidget::pane {{
+            border: 1px solid rgba(0,0,0,12%);
+            border-radius: 10px;
+            padding: 6px;
+            background: rgb({panel.red()},{panel.green()},{panel.blue()});
+        }}
+        QTabBar::tab {{
+            background: transparent;
+            border: none;
+            padding: 8px 14px;
+            margin: 4px;
+            border-radius: 8px;
+            color: {subtext.name()};
+            font-weight: 600;
+        }}
+        QTabBar::tab:selected {{
+            color: white;
+            background: rgb({green.red()},{green.green()},{green.blue()});
+        }}
+        QTabBar::tab:hover:!selected {{
+            color: rgb({green.darker(120).red()},{green.darker(120).green()},{green.darker(120).blue()});
+            background: rgba({green.red()},{green.green()},{green.blue()}, 0.08);
+        }}
+
+        /* Splitter */
+        QSplitter::handle {{
+            background: rgba(0,0,0,6%);
+            width: 6px;
+            margin: 2px;
+            border-radius: 3px;
+        }}
+
+        /* Tablas */
+        QTableWidget {{
+            border: 1px solid rgba(0,0,0,12%);
+            border-radius: 8px;
+            gridline-color: rgba(0,0,0,10%);
+            selection-background-color: rgb({green.red()},{green.green()},{green.blue()});
+            selection-color: white;
+        }}
+        QHeaderView::section {{
+            background: rgba({green.red()},{green.green()},{green.blue()}, 0.10);
+            color: rgb({text.red()},{text.green()},{text.blue()});
+            border: none;
+            border-right: 1px solid rgba(0,0,0,10%);
+            padding: 6px;
+            font-weight: 600;
+        }}
+
+        /* SpinBox y ComboBox */
+        QSpinBox, QDoubleSpinBox, QComboBox {{
+            background: rgb({panel.red()},{panel.green()},{panel.blue()});
+            border: 1px solid rgba(0,0,0,16%);
+            border-radius: 8px;
+            padding: 4px 8px;
+        }}
+        QComboBox::drop-down {{
+            border: none;
+            width: 24px;
+        }}
+
+        /* 🔒 Ocultar flechas de todos los SpinBox */
+        QSpinBox::up-button, QSpinBox::down-button,
+        QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+            width: 0px; height: 0px; border: none; margin: 0; padding: 0;
+        }}
+
+        /* Áreas de salida (OutputArea) ligeramente resaltadas */
+        QTextEdit[readOnly="true"] {{
+            background: rgb({panel.red()},{panel.green()},{panel.blue()});
+            border: 1px solid rgba(0,0,0,12%);
+            border-radius: 10px;
+        }}
+
+        /* Barras de desplazamiento finas */
+        QScrollBar:vertical {{
+            width: 10px; background: transparent; margin: 4px;
+        }}
+        QScrollBar::handle:vertical {{
+            background: rgba(0,0,0,20%); border-radius: 5px; min-height: 24px;
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background: rgba(0,0,0,32%);
+        }}
+        QScrollBar:horizontal {{
+            height: 10px; background: transparent; margin: 4px;
+        }}
+        QScrollBar::handle:horizontal {{
+            background: rgba(0,0,0,20%); border-radius: 5px; min-width: 24px;
+        }}
+        QScrollBar::handle:horizontal:hover {{
+            background: rgba(0,0,0,32%);
+        }}
+    """)
+
+
+def btn(text: str, kind: str = "primary"):
     b = QtWidgets.QPushButton(text)
     b.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+    # Usa objectName para que el QSS los detecte
+    if kind not in {"primary", "ghost", "danger"}:
+        kind = "primary"
+    b.setObjectName(f"btn-{kind}")
+    b.setMinimumHeight(34)
+    b.setProperty("class", kind)
+    b.setAutoDefault(False)
+    b.setDefault(False)
     return b
 
 class LabeledEdit(QtWidgets.QWidget):
@@ -256,10 +495,14 @@ class MatrixAugTable(QtWidgets.QWidget):
         top = QtWidgets.QHBoxLayout()
         top.addWidget(QtWidgets.QLabel("m:"))
         self.spin_m = QtWidgets.QSpinBox(); self.spin_m.setRange(1, 999); self.spin_m.setValue(3)
+        self.spin_m.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        _disable_spin_wheel(self.spin_m)
         top.addWidget(self.spin_m)
         top.addSpacing(12)
         top.addWidget(QtWidgets.QLabel("n:"))
         self.spin_n = QtWidgets.QSpinBox(); self.spin_n.setRange(1, 999); self.spin_n.setValue(3)
+        self.spin_n.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        _disable_spin_wheel(self.spin_n)
         top.addWidget(self.spin_n)
         top.addStretch(1)
         lay.addLayout(top)
@@ -597,7 +840,7 @@ class TabGaussJordan(QtWidgets.QWidget):
             self._set_text("Error: " + str(e))
 
 class TabProg4(QtWidgets.QWidget):
-    """Programa 4: Ax=b (pasos+paramétrica) y dependencia A·c=0."""
+    """Dependencia: Ax=b (pasos+paramétrica) y dependencia A·c=0."""
     def __init__(self, parent=None):
         super().__init__(parent)
         mlay = QtWidgets.QVBoxLayout(self)
@@ -609,10 +852,9 @@ class TabProg4(QtWidgets.QWidget):
             "Resolver Ax=b + Dependencia de columnas de A",
             "Análisis de Dependencia Lineal (de un conjunto de vectores)"
         ])
-        self.btn_export = btn("Exportar resultados...")
+        # (Eliminado botón Exportar resultados…)
         top_bar.addWidget(QtWidgets.QLabel("Operación:"))
         top_bar.addWidget(self.op_selector, 1)
-        top_bar.addWidget(self.btn_export)
         mlay.addLayout(top_bar)
         
         # --- Contenedor de páginas ---
@@ -633,7 +875,6 @@ class TabProg4(QtWidgets.QWidget):
         self.btn_fmt.clicked.connect(self._toggle_fmt)
         
         self.op_selector.currentIndexChanged.connect(self.stack.setCurrentIndex)
-        self.btn_export.clicked.connect(lambda: save_text_to_file(self, self.out.toPlainText(), "programa4.txt"))
 
     def _set_text(self, base_text: str):
         self._last_dec = text_to_decimals(base_text)
@@ -959,7 +1200,7 @@ class TabVectores(QtWidgets.QWidget):
             out = verificar_distributiva_matriz(A, u, v)
             self._set_text("\n".join(out["pasos"]))
         except Exception as e:
-            self._set_text(f"Error: {e}")
+            self._set_text("Error: " + str(e))
 
     # --- Página 3: Combinación Lineal ---
     def _create_comb_lineal_page(self):
@@ -1046,20 +1287,23 @@ class TabVectores(QtWidgets.QWidget):
 #   Programa 5 (Matrices) — con cálculo elemento a elemento
 # =========================
 class TabProg5(QtWidgets.QWidget):
-    """Programa 5 — Operaciones con matrices, verificación de traspuesta y evaluador de expresiones matriciales."""
+    """Programa 5 — Operaciones con matrices y verificación de propiedades de la traspuesta."""
     def __init__(self, parent=None):
         super().__init__(parent)
         main = QtWidgets.QVBoxLayout(self)
 
-        # --- fila superior: tamaños A y B + escalar r ---
         top = QtWidgets.QHBoxLayout()
         self.sp_m = QtWidgets.QSpinBox(); self.sp_m.setRange(1, 50); self.sp_m.setValue(2)
+        self.sp_m.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons); _disable_spin_wheel(self.sp_m)
         self.sp_n = QtWidgets.QSpinBox(); self.sp_n.setRange(1, 50); self.sp_n.setValue(2)
+        self.sp_n.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons); _disable_spin_wheel(self.sp_n)
         top.addWidget(QtWidgets.QLabel("A: m=")); top.addWidget(self.sp_m)
         top.addWidget(QtWidgets.QLabel(" n=")); top.addWidget(self.sp_n)
         top.addSpacing(16)
         self.sp_r = QtWidgets.QSpinBox(); self.sp_r.setRange(1, 50); self.sp_r.setValue(2)
+        self.sp_r.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons); _disable_spin_wheel(self.sp_r)
         self.sp_p = QtWidgets.QSpinBox(); self.sp_p.setRange(1, 50); self.sp_p.setValue(2)
+        self.sp_p.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons); _disable_spin_wheel(self.sp_p)
         top.addWidget(QtWidgets.QLabel("B: m=")); top.addWidget(self.sp_r)
         top.addWidget(QtWidgets.QLabel(" n=")); top.addWidget(self.sp_p)
         top.addSpacing(16)
@@ -1070,7 +1314,6 @@ class TabProg5(QtWidgets.QWidget):
         top.addStretch(1)
         main.addLayout(top)
 
-        # --- centro: tablas A y B a la izquierda, acciones a la derecha ---
         center = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
 
         left = QtWidgets.QWidget(); ll = QtWidgets.QVBoxLayout(left); ll.setContentsMargins(0,0,0,0)
@@ -1111,39 +1354,12 @@ class TabProg5(QtWidgets.QWidget):
         rl.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         self.btn_fmt.clicked.connect(self._toggle_fmt)
 
-        # ====== NUEVA SECCIÓN: Evaluar expresión matricial ======
-        sep = QtWidgets.QFrame()
-        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
-        rl.addWidget(sep)
-
-        lbl_expr = QtWidgets.QLabel("Evaluar expresión matricial (usa corchetes y ';' para filas)")
-        lbl_expr.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
-        rl.addWidget(lbl_expr)
-
-        self.expr_edit = QtWidgets.QPlainTextEdit()
-        self.expr_edit.setPlaceholderText(
-            "Ejemplos:\n"
-            "1) [-1 8 -3; 0 10 -4] * ([5 -6; -1 0; 0 3] - 1/2 * [-2 4; 0 2; -4 -6])\n"
-            "2) ([1 2; 3 4] + [0 5; -1 2]) * [1 0; 0 1]\n"
-            "3) ([-2 3; 1 -1])^T"
-        )
-        self.expr_edit.setFont(mono_font())
-        self.expr_edit.setFixedHeight(110)
-        rl.addWidget(self.expr_edit)
-
-        self.btn_eval_expr = btn("Evaluar expresión matricial")
-        rl.addWidget(self.btn_eval_expr, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.btn_eval_expr.clicked.connect(self.on_eval_expr)
-        # ========================================================
-
         center.addWidget(left)
         center.addWidget(right)
         center.setStretchFactor(0, 1)
         center.setStretchFactor(1, 1)
         main.addWidget(center)
 
-        # conexiones base
         self.sp_m.valueChanged.connect(self._sync_A)
         self.sp_n.valueChanged.connect(self._sync_A)
         self.sp_r.valueChanged.connect(self._sync_B)
@@ -1162,11 +1378,10 @@ class TabProg5(QtWidgets.QWidget):
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self, activated=self.on_sum)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self, activated=self.on_sum)
 
-        # Mantener B.m = A.n para poder multiplicar A·B fácilmente
         self.sp_n.valueChanged.connect(lambda v: self.sp_r.setValue(v))
         self._sync_A(); self._sync_B()
 
-    # ---------- helpers formato ----------
+    # helpers formato
     def _set_text(self, base_text: str):
         self._last_dec = text_to_decimals(base_text)
         self._last_frac = text_to_fractions(base_text)
@@ -1196,7 +1411,6 @@ class TabProg5(QtWidgets.QWidget):
     def _print(self, lines: list[str]):
         self._set_text("\n".join(lines))
 
-    # ---------- acciones (existentes) ----------
     def on_sum(self):
         try:
             A = self.tblA.to_matrix()
@@ -1293,33 +1507,8 @@ class TabProg5(QtWidgets.QWidget):
         except Exception as e:
             self._print(["Error:", str(e)])
 
-    # ---------- NUEVO: evaluar expresión matricial ----------
-    def on_eval_expr(self):
-        """Evalúa una expresión matricial escrita como texto (p.ej., [-1 8 -3; 0 10 -4] * ([5 -6; -1 0; 0 3] - 1/2 * [-2 4; 0 2; -4 -6]))."""
-        try:
-            expr = self.expr_edit.toPlainText().strip()
-            if not expr:
-                raise ValueError("Debe ingresar una expresión.")
-
-            # Esta función debe existir en matrices.py
-            from matrices import evaluar_expresion_matricial
-
-            out = evaluar_expresion_matricial(expr)
-
-            lines = ["--- Evaluación de expresión matricial ---"]
-            for p in out.get("pasos", []):
-                lines.append(p)
-            lines += ["", "Resultado:", format_matrix_text(out["resultado"])]
-            self._set_text("\n".join(lines))
-        except Exception as e:
-            self._set_text(f"Error: {e}")
-
-
 # =========================
 #   Programa 6 (Inversa: Gauss–Jordan + propiedades) — botón global por pestaña
-# =========================
-# =========================
-#   Programa 6 (Inversa: Gauss–Jordan + propiedades)
 # =========================
 class TabProg6(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -1328,25 +1517,20 @@ class TabProg6(QtWidgets.QWidget):
 
         # --- fila superior ---
         top = QtWidgets.QHBoxLayout()
-        self.sp_n = QtWidgets.QSpinBox()
-        self.sp_n.setRange(1, 50)
-        self.sp_n.setValue(2)
-        top.addWidget(QtWidgets.QLabel("n:"))
-        top.addWidget(self.sp_n)
+        self.sp_n = QtWidgets.QSpinBox(); self.sp_n.setRange(1, 50); self.sp_n.setValue(2)
+        self.sp_n.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        _disable_spin_wheel(self.sp_n)
+        top.addWidget(QtWidgets.QLabel("n:")); top.addWidget(self.sp_n)
         top.addStretch(1)
         root.addLayout(top)
 
         # --- centro: tabla (izq) + conclusiones (der) ---
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        left = QtWidgets.QWidget()
-        ll = QtWidgets.QVBoxLayout(left)
-        ll.setContentsMargins(0, 0, 0, 0)
+        left = QtWidgets.QWidget(); ll = QtWidgets.QVBoxLayout(left); ll.setContentsMargins(0,0,0,0)
         self.tblA = MatrixTable(2, 2, "Matriz A (n×n)")
         ll.addWidget(self.tblA)
 
-        right = QtWidgets.QWidget()
-        rl = QtWidgets.QVBoxLayout(right)
-        rl.setContentsMargins(6, 0, 0, 0)
+        right = QtWidgets.QWidget(); rl = QtWidgets.QVBoxLayout(right); rl.setContentsMargins(6,0,0,0)
         self.summary = OutputArea()
         rl.addWidget(self.summary)
 
@@ -1358,9 +1542,9 @@ class TabProg6(QtWidgets.QWidget):
 
         # --- barra de acciones ---
         actions = QtWidgets.QHBoxLayout()
-        self.btn_inv = btn("Calcular A^{-1} y |A|")
+        self.btn_inv   = btn("Calcular A^{-1} y |A|")
         self.btn_props = btn("Verificar propiedades (c)(d)(e)")
-        self.btn_all = btn("Todo junto")
+        self.btn_all   = btn("Todo junto")
         self.btn_clear = btn("Limpiar")
         actions.addStretch(1)
         for b in (self.btn_inv, self.btn_props, self.btn_all, self.btn_clear):
@@ -1373,12 +1557,10 @@ class TabProg6(QtWidgets.QWidget):
         self.steps_all.setPlaceholderText("Aquí se mostrará TODO el procedimiento de Gauss–Jordan sobre [A | I].")
         root.addWidget(self.steps_all)
 
-        # --- botón de formato ---
+        # === Botón global de formato (pestaña) — controla summary y steps ===
         self._show_frac = False
-        self._sum_dec = ""
-        self._sum_frac = ""
-        self._steps_dec = ""
-        self._steps_frac = ""
+        self._sum_dec = ""; self._sum_frac = ""
+        self._steps_dec = ""; self._steps_frac = ""
         self.btn_fmt = btn("Cambiar a fracciones")
         root.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         self.btn_fmt.clicked.connect(self._toggle_fmt)
@@ -1393,7 +1575,7 @@ class TabProg6(QtWidgets.QWidget):
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+I"), self, activated=self.on_inv)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+P"), self, activated=self.on_props)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+T"), self, activated=self.on_all)
-        QtGui.QShortcut(QtGui.QKeySequence("Esc"), self, activated=self._clear_all)
+        QtGui.QShortcut(QtGui.QKeySequence("Esc"),   self, activated=self._clear_all)
 
         self._sync_n()
 
@@ -1413,13 +1595,14 @@ class TabProg6(QtWidgets.QWidget):
             raise ValueError("A debe ser cuadrada n×n.")
         return A
 
+    # helpers formato
     def _set_summary(self, base_text: str):
-        self._sum_dec = text_to_decimals(base_text)
+        self._sum_dec  = text_to_decimals(base_text)
         self._sum_frac = text_to_fractions(base_text)
         self.summary.clear_and_write(self._sum_frac if self._show_frac else self._sum_dec)
 
     def _set_steps(self, base_text: str):
-        self._steps_dec = text_to_decimals(base_text)
+        self._steps_dec  = text_to_decimals(base_text)
         self._steps_frac = text_to_fractions(base_text)
         self.steps_all.clear_and_write(self._steps_frac if self._show_frac else self._steps_dec)
 
@@ -1437,20 +1620,12 @@ class TabProg6(QtWidgets.QWidget):
 
             lines = []
             lines += ["=== Inversa por Gauss–Jordan ===", ""]
-            lines += ["Determinante:", inv.get("det_texto", "|A| = (desconocido)"), ""]
-            lines += ["Conclusión (inversa):", inv.get("conclusion", "")]
+            lines += ["Determinante:", inv.get("det_texto","|A| = (desconocido)"), ""]
+            lines += ["Conclusión:", inv.get("conclusion","")]
             if inv.get("estado") == "ok":
                 lines += ["", "A^{-1} =", format_matrix_text(inv["Ainv"])]
-
-            # Mensaje final según determinante
-            det = inv.get("det")
-            if det is not None:
-                if abs(float(det)) <= 1e-10:
-                    lines += ["", "El determinante es cero por lo tanto no es invertible."]
-                else:
-                    lines += ["", "El determinante es diferente de 0 por lo tanto es una matriz no singular y tiene inversa."]
-
             self._set_summary("\n".join(lines))
+
             pasos = inv.get("pasos", [])
             self._set_steps("\n\n".join(pasos) if pasos else "(No se generaron pasos.)")
 
@@ -1465,9 +1640,14 @@ class TabProg6(QtWidgets.QWidget):
 
             lines = []
             lines += ["=== Propiedades (c)(d)(e) ===", ""]
-            lines += [f"Pivotes (1-index): {props.get('pivotes', 'N/A')}"]
-            lines += [f"Rango: {props.get('rango', 'N/A')}", ""]
+            lines += [f"Pivotes (1-index): {props.get('pivotes', 'N/A')}",
+                      f"Rango: {props.get('rango', 'N/A')}", ""]
             lines += [props.get("explicacion", "No se pudo generar la explicación.")]
+            
+            if props.get("detalle_sistema_homogeneo"):
+                lines.append("\n--- Detalles del sistema homogéneo Ax=0 ---")
+                lines.append(formatear_solucion_parametrica(props["detalle_sistema_homogeneo"]))
+                
             self._set_summary("\n".join(lines))
             self._set_steps("(Ejecuta 'Calcular A^{-1} y |A|' o 'Todo junto' para ver el procedimiento).")
 
@@ -1483,22 +1663,12 @@ class TabProg6(QtWidgets.QWidget):
 
             lines = []
             lines += ["=== Inversa + Propiedades ===", ""]
-            lines += ["Determinante:", inv.get("det_texto", "|A| = (desconocido)"), ""]
-            lines += ["Conclusión (inversa):", inv.get("conclusion", "")]
+            lines += ["Determinante:", inv.get("det_texto","|A| = (desconocido)"), ""]
+            lines += ["Conclusión (inversa):", inv.get("conclusion","")]
             if inv.get("estado") == "ok":
                 lines += ["", "A^{-1} =", format_matrix_text(inv["Ainv"])]
-
-            # Mensaje final según determinante
-            det = inv.get("det")
-            if det is not None:
-                if abs(float(det)) <= 1e-10:
-                    lines += ["", "El determinante es cero por lo tanto no es invertible."]
-                else:
-                    lines += ["", "El determinante es diferente de 0 por lo tanto es una matriz no singular y tiene inversa."]
-
-            # Propiedades
-            lines += ["", "--- Propiedades (c)(d)(e) ---", props.get("explicacion", ""), ""]
-            lines += ["Conclusión global:", full.get("conclusion_global", "")]
+            lines += ["", "--- Propiedades (c)(d)(e) ---", props.get("explicacion",""), ""]
+            lines += ["Conclusión global:", full.get("conclusion_global","")]
             self._set_summary("\n".join(lines))
 
             pasos = inv.get("pasos", [])
@@ -1507,8 +1677,6 @@ class TabProg6(QtWidgets.QWidget):
         except Exception as e:
             self._set_summary("Error: " + str(e))
             self._set_steps("")
-
-
 
 # =========================
 #   Ventana principal
@@ -1522,7 +1690,7 @@ class MainWindow(QtWidgets.QMainWindow):
         tabs = QtWidgets.QTabWidget()
         tabs.addTab(TabGaussJordan(), "Gauss-Jordan (Ab)")
         tabs.addTab(TabAXeqB(), "AX=B")
-        tabs.addTab(TabProg4(), "Programa 4")
+        tabs.addTab(TabProg4(), "Dependencia")         # 👈 renombrado
         tabs.addTab(TabVectores(), "Vectores")
         tabs.addTab(TabProg5(), "Operaciones con Matrices")
         tabs.addTab(TabProg6(), "Inversa")   
@@ -1530,38 +1698,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(tabs)
         self.statusBar().showMessage("Listo")
 
+        # Oculta las flechas de TODOS los SpinBox del árbol y desactiva la rueda
+        hide_all_spin_buttons(self)
+
 # =========================
 #   main() con tema claro
 # =========================
 def main():
     app = QtWidgets.QApplication(sys.argv)
-
-    # Tema claro (blanco-gris)
-    palette = QtGui.QPalette()
-    base_color = QtGui.QColor(245, 245, 245)
-    text_color = QtGui.QColor(20, 20, 20)
-    panel_color = QtGui.QColor(255, 255, 255)
-    highlight = QtGui.QColor(41, 128, 185)
-
-    palette.setColor(QtGui.QPalette.ColorRole.Window, base_color)
-    palette.setColor(QtGui.QPalette.ColorRole.Base, panel_color)
-    palette.setColor(QtGui.QPalette.ColorRole.AlternateBase, QtGui.QColor(235, 235, 235))
-    palette.setColor(QtGui.QPalette.ColorRole.WindowText, text_color)
-    palette.setColor(QtGui.QPalette.ColorRole.Text, text_color)
-    palette.setColor(QtGui.QPalette.ColorRole.Button, QtGui.QColor(240, 240, 240))
-    palette.setColor(QtGui.QPalette.ColorRole.ButtonText, text_color)
-    palette.setColor(QtGui.QPalette.ColorRole.Highlight, highlight)
-    palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(255, 255, 255))
-    palette.setColor(QtGui.QPalette.ColorRole.ToolTipBase, QtGui.QColor(255, 255, 225))
-    palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, text_color)
-
-    app.setPalette(palette)
-    app.setStyle("Fusion")
-    app.setFont(QtGui.QFont("Segoe UI", 10))
+    apply_green_theme(app)  # 👈 aplica el look & feel verde
 
     w = MainWindow()
     w.show()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
