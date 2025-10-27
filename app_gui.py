@@ -6,40 +6,15 @@ import re
 from fractions import Fraction
 
 from PyQt6 import QtWidgets, QtCore, QtGui
+from streamlit import tabs
 
-from utilidad import evaluar_expresion, fmt_number, DEFAULT_DEC
-from sistema_lineal import SistemaLineal, formatear_solucion_parametrica
-from homogeneo import (
-    resolver_sistema_homogeneo_y_no_homogeneo,
-    resolver_dependencia_lineal_con_homogeneo,
-    analizar_dependencia,
-)
-from algebra_vector import (
-    resolver_AX_igual_B,
-    multiplicacion_matriz_vector_explicada,
-    sistema_a_forma_matricial,
-    ecuacion_vectorial,
-    combinacion_lineal_explicada,
-    verificar_propiedades,
-    verificar_distributiva_matriz,
-)
-
-# ====== Funciones del Programa 5 ======
-from matrices import (
-    suma_matrices_explicada,
-    resta_matrices_explicada,
-    producto_escalar_explicado,
-    producto_matrices_explicado,
-    traspuesta_explicada,
-    propiedad_r_suma_traspuesta_explicada, 
-)
-
-# ====== Programa 6 (Inversa) ======
-from inversa import (
-    inversa_por_gauss_jordan,
-    verificar_propiedades_invertibilidad,
-    programa_inversa_con_propiedades,
-)
+from utilidad import *
+from sistema_lineal import *
+from homogeneo import *
+from algebra_vector import *
+from matrices import *
+from inversa import *
+from determinante import *
 
 # =========================
 #   Helpers de parsing
@@ -1750,6 +1725,199 @@ class TabProg6(QtWidgets.QWidget):
             self._set_summary("Error: " + str(e))
             self._set_steps("")
 
+            
+# ===== Nuevo: TabDeterminante =====
+class TabDeterminante(QtWidgets.QWidget):
+    """Programa 7 — Determinante: Cofactores, Sarrus, Cramer + Propiedades."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        main = QtWidgets.QVBoxLayout(self)
+
+        # --- Dimensión ---
+        dims = QtWidgets.QHBoxLayout()
+        self.sp_n = QtWidgets.QSpinBox(); self.sp_n.setRange(1, 8); self.sp_n.setValue(3)
+        self.sp_n.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        _disable_spin_wheel(self.sp_n)
+        dims.addWidget(QtWidgets.QLabel("n (cuadrada):"))
+        dims.addWidget(self.sp_n)
+        dims.addStretch(1)
+        main.addLayout(dims)
+
+        # --- Selector de método ---
+        self.method = QtWidgets.QComboBox()
+        self.method.addItems(["Cofactores (general)", "Sarrus (3×3)", "Cramer (ilustrativo)"])
+        main.addWidget(self.method)
+
+        # --- k para Propiedad 4 (editable) ---
+        row_k = QtWidgets.QHBoxLayout()
+        self.k_prop4 = LabeledEdit("k (Prop. 4):", "3", default_value="3")
+        row_k.addWidget(self.k_prop4)
+        row_k.addStretch(1)
+        main.addLayout(row_k)
+
+        # --- Vector b (opcional para Cramer) — DEBE crearse antes de tocarlo ---
+        self.b_input = VectorInputTable("Vector b (opcional para Cramer)", 3)
+        # mejoras de visibilidad
+        self.b_input.table.setFont(mono_font())
+        self.b_input.table.setWordWrap(False)
+        self.b_input.table.setFixedHeight(72)
+        hh = self.b_input.table.horizontalHeader()
+        hh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+        hh.setMinimumSectionSize(90)
+        self.b_input.table.setStyleSheet(
+            "QTableWidget::item{padding:6px;} QTableWidget{gridline-color: rgba(0,0,0,25%);} "
+        )
+        main.addWidget(self.b_input)
+
+        # --- Matriz A ---
+        self.tblA = MatrixTable(3, 3, "Matriz A (n×n)")
+        main.addWidget(self.tblA)
+
+        # --- Botones ---
+        btns = QtWidgets.QHBoxLayout()
+        self.btn_det = btn("Calcular determinante")
+        self.btn_props = btn("Verificar propiedades")
+        btns.addWidget(self.btn_det)
+        btns.addWidget(self.btn_props)
+        btns.addStretch(1)
+        main.addLayout(btns)
+
+        # --- Salida ---
+        self.out = OutputArea()
+        main.addWidget(self.out)
+
+        # --- Botón fracciones/decimales ---
+        self._show_frac = False
+        self._last_dec = ""
+        self._last_frac = ""
+        self.btn_fmt = btn("Cambiar a fracciones")
+        main.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.btn_fmt.clicked.connect(self._toggle_fmt)
+
+        # Eventos / sincronización
+        self.sp_n.valueChanged.connect(self._sync_n)
+        self.btn_det.clicked.connect(self.on_det)
+        self.btn_props.clicked.connect(self.on_props)
+
+        # Inicial
+        self._sync_n()
+
+    def _sync_n(self):
+        n = int(self.sp_n.value())
+        self.tblA.set_size(n, n)
+        self.b_input.set_size(n)
+
+    def _set_text(self, base_text: str):
+        self._last_dec = text_to_decimals(base_text)
+        self._last_frac = text_to_fractions(base_text)
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    def _toggle_fmt(self):
+        self._show_frac = not self._show_frac
+        self.btn_fmt.setText("Cambiar a decimales" if self._show_frac else "Cambiar a fracciones")
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    def on_det(self):
+        try:
+            from determinante import det_cofactores, det_sarrus, det_por_cramer, interpretar_invertibilidad
+            A = self.tblA.to_matrix()
+            metodo = self.method.currentText()
+            lines = []
+
+            if metodo.startswith("Cofactores"):
+                out = det_cofactores(A, dec=4)
+                detA = out["det"]; lines += ["[Cofactores]\n"] + out["pasos"]
+            elif metodo.startswith("Sarrus"):
+                out = det_sarrus(A, dec=4)
+                detA = out["det"]; lines += ["[Sarrus]\n"] + out["pasos"]
+            else:  # Cramer
+                b = self.b_input.to_vector()
+                out = det_por_cramer(A, b, dec=4)
+                detA = out["det"]; lines += ["[Cramer]\n"] + out["pasos"]
+
+            lines += ["", f"Conclusión: {out['conclusion']}",
+                      interpretar_invertibilidad(detA, dec=4)]
+            self._set_text("\n".join(lines))
+
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+    def on_props(self):
+        try:
+            from determinante import (
+                propiedad_fila_col_cero, propiedad_filas_prop,
+                propiedad_swap_signo, propiedad_multiplicar_fila,
+                propiedad_multiplicativa
+            )
+            from utilidad import evaluar_expresion
+            from algebra_vector import columnas
+
+            A = self.tblA.to_matrix()
+
+            p1 = propiedad_fila_col_cero(A, dec=4)
+            p2 = propiedad_filas_prop(A, dec=4)
+            p3 = propiedad_swap_signo(A, dec=4)
+
+            # k editable
+            k_val = float(evaluar_expresion(self.k_prop4.text()))
+            p4 = propiedad_multiplicar_fila(A, k_val, dec=4)
+
+            # B por defecto = A^T para propiedad 5 (o cambia aquí si deseas)
+            B = [fila[:] for fila in columnas(A)]
+            p5 = propiedad_multiplicativa(A, B, dec=4)
+
+            lines = []
+            lines += ["[Propiedad 1] Fila/columna cero → det(A)=0."] + p1["pasos"] + [p1["conclusion"], ""]
+            lines += ["[Propiedad 2] Filas/columnas proporcionales → det(A)=0."] + p2["pasos"] + [p2["conclusion"], ""]
+            lines += ["[Propiedad 3] Intercambio de filas cambia el signo."] + p3["pasos"] + [p3["conclusion"], ""]
+            lines += [f"[Propiedad 4] Multiplicar fila por k escala det (k={k_val})."] + p4["pasos"] + [p4["conclusion"], ""]
+            lines += ["[Propiedad 5] det(AB) = det(A)·det(B)."] + p5["pasos"] + [p5["conclusion"]]
+
+            self._set_text("\n".join(lines))
+
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+
+def on_props(self):
+    try:
+        A = self.tblA.to_matrix()
+
+        # Prop. 1
+        p1 = propiedad_fila_col_cero(A, dec=4)
+
+        # Prop. 2
+        p2 = propiedad_filas_prop(A, dec=4)
+
+        # Prop. 3
+        p3 = propiedad_swap_signo(A, dec=4)
+
+        # Prop. 4  <<< usa k editable >>>
+        try:
+            k_val = float(evaluar_expresion(self.k_prop4.text()))
+        except Exception as e:
+            raise ValueError(f"Escalar k inválido: {e}")
+        p4 = propiedad_multiplicar_fila(A, k_val, dec=4)
+
+        # Prop. 5 (como la tengas ahora)
+        # Si la haces con B = A^T:
+        from algebra_vector import columnas
+        B = [fila[:] for fila in columnas(A)]
+        p5 = propiedad_multiplicativa(A, B, dec=4)
+
+        # Render de salida (igual que ya tienes)
+        lines = []
+        lines += ["[Propiedad 1] Fila/columna cero → det(A)=0."] + p1["pasos"] + [p1["conclusion"], ""]
+        lines += ["[Propiedad 2] Filas/columnas proporcionales → det(A)=0."] + p2["pasos"] + [p2["conclusion"], ""]
+        lines += ["[Propiedad 3] Intercambio de filas cambia el signo."] + p3["pasos"] + [p3["conclusion"], ""]
+        lines += [f"[Propiedad 4] Multiplicar fila por k escala det por k (k={k_val})."] + p4["pasos"] + [p4["conclusion"], ""]
+        lines += ["[Propiedad 5] det(AB) = det(A)·det(B)."] + p5["pasos"] + [p5["conclusion"]]
+
+        self._set_text("\n".join(lines))
+
+    except Exception as e:
+        self._set_text(f"Error: {e}")
+
 # =========================
 #   Ventana principal
 # =========================
@@ -1765,7 +1933,8 @@ class MainWindow(QtWidgets.QMainWindow):
         tabs.addTab(TabProg4(), "Dependencia")         # 👈 renombrado
         tabs.addTab(TabVectores(), "Vectores")
         tabs.addTab(TabProg5(), "Operaciones con Matrices")
-        tabs.addTab(TabProg6(), "Inversa")   
+        tabs.addTab(TabProg6(), "Inversa")
+        tabs.addTab(TabDeterminante(), "Determinante")   
 
         self.setCentralWidget(tabs)
         self.statusBar().showMessage("Listo")
