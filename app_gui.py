@@ -6,7 +6,6 @@ import re
 from fractions import Fraction
 
 from PyQt6 import QtWidgets, QtCore, QtGui
-from streamlit import tabs
 
 from utilidad import *
 from sistema_lineal import *
