@@ -1775,9 +1775,22 @@ class TabDeterminante(QtWidgets.QWidget):
         # --- Botones ---
         btns = QtWidgets.QHBoxLayout()
         self.btn_det = btn("Calcular determinante")
-        self.btn_props = btn("Verificar propiedades")
         btns.addWidget(self.btn_det)
-        btns.addWidget(self.btn_props)
+
+        # MODIFICADO: Reemplazar botón de propiedades por ComboBox y botón de ejecución
+        self.prop_selector = QtWidgets.QComboBox()
+        self.prop_selector.addItems([
+            "Prop. 1: Fila/Columna Cero",
+            "Prop. 2: Filas Proporcionales",
+            "Prop. 3: Intercambio de Filas (Signo)",
+            "Prop. 4: Multiplicar Fila por k",
+            "Prop. 5: det(AB) = det(A)det(B) (con B=A^T)",
+        ])
+        self.btn_run_prop = btn("Verificar Propiedad")
+        
+        btns.addSpacing(20) # Espacio separador
+        btns.addWidget(self.prop_selector)
+        btns.addWidget(self.btn_run_prop)
         btns.addStretch(1)
         main.addLayout(btns)
 
@@ -1796,7 +1809,7 @@ class TabDeterminante(QtWidgets.QWidget):
         # Eventos / sincronización
         self.sp_n.valueChanged.connect(self._sync_n)
         self.btn_det.clicked.connect(self.on_det)
-        self.btn_props.clicked.connect(self.on_props)
+        self.btn_run_prop.clicked.connect(self.on_props) # Conectar el nuevo botón
 
         # Inicial
         self._sync_n()
@@ -1841,8 +1854,10 @@ class TabDeterminante(QtWidgets.QWidget):
         except Exception as e:
             self._set_text(f"Error: {e}")
 
+    # MODIFICADO: on_props ahora solo ejecuta la propiedad seleccionada
     def on_props(self):
         try:
+            # Imports necesarios
             from determinante import (
                 propiedad_fila_col_cero, propiedad_filas_prop,
                 propiedad_swap_signo, propiedad_multiplicar_fila,
@@ -1852,70 +1867,46 @@ class TabDeterminante(QtWidgets.QWidget):
             from algebra_vector import columnas
 
             A = self.tblA.to_matrix()
-
-            p1 = propiedad_fila_col_cero(A, dec=4)
-            p2 = propiedad_filas_prop(A, dec=4)
-            p3 = propiedad_swap_signo(A, dec=4)
-
-            # k editable
-            k_val = float(evaluar_expresion(self.k_prop4.text()))
-            p4 = propiedad_multiplicar_fila(A, k_val, dec=4)
-
-            # B por defecto = A^T para propiedad 5 (o cambia aquí si deseas)
-            B = [fila[:] for fila in columnas(A)]
-            p5 = propiedad_multiplicativa(A, B, dec=4)
-
+            
+            # Get the selected property
+            selected_prop = self.prop_selector.currentText()
             lines = []
-            lines += ["[Propiedad 1] Fila/columna cero → det(A)=0."] + p1["pasos"] + [p1["conclusion"], ""]
-            lines += ["[Propiedad 2] Filas/columnas proporcionales → det(A)=0."] + p2["pasos"] + [p2["conclusion"], ""]
-            lines += ["[Propiedad 3] Intercambio de filas cambia el signo."] + p3["pasos"] + [p3["conclusion"], ""]
-            lines += [f"[Propiedad 4] Multiplicar fila por k escala det (k={k_val})."] + p4["pasos"] + [p4["conclusion"], ""]
-            lines += ["[Propiedad 5] det(AB) = det(A)·det(B)."] + p5["pasos"] + [p5["conclusion"]]
+            
+            # Use if/elif to run only the selected one
+            if "Prop. 1" in selected_prop:
+                p1 = propiedad_fila_col_cero(A, dec=4)
+                lines += ["[Propiedad 1] Fila/columna cero → det(A)=0."] + p1["pasos"] + [p1["conclusion"]]
+            
+            elif "Prop. 2" in selected_prop:
+                p2 = propiedad_filas_prop(A, dec=4)
+                lines += ["[Propiedad 2] Filas/columnas proporcionales → det(A)=0."] + p2["pasos"] + [p2["conclusion"]]
+            
+            elif "Prop. 3" in selected_prop:
+                p3 = propiedad_swap_signo(A, dec=4)
+                lines += ["[Propiedad 3] Intercambio de filas cambia el signo."] + p3["pasos"] + [p3["conclusion"]]
+            
+            elif "Prop. 4" in selected_prop:
+                try:
+                    k_val = float(evaluar_expresion(self.k_prop4.text()))
+                except Exception as e:
+                    raise ValueError(f"Escalar k inválido: {e}")
+                p4 = propiedad_multiplicar_fila(A, k_val, dec=4)
+                lines += [f"[Propiedad 4] Multiplicar fila por k escala det (k={k_val})."] + p4["pasos"] + [p4["conclusion"]]
+            
+            elif "Prop. 5" in selected_prop:
+                # B por defecto = A^T
+                B = [fila[:] for fila in columnas(A)]
+                p5 = propiedad_multiplicativa(A, B, dec=4)
+                lines += ["[Propiedad 5] det(AB) = det(A)·det(B) (con B=A^T)."] + p5["pasos"] + [p5["conclusion"]]
+            
+            else:
+                lines.append("Por favor, seleccione una propiedad.")
 
             self._set_text("\n".join(lines))
 
         except Exception as e:
             self._set_text(f"Error: {e}")
 
-
-def on_props(self):
-    try:
-        A = self.tblA.to_matrix()
-
-        # Prop. 1
-        p1 = propiedad_fila_col_cero(A, dec=4)
-
-        # Prop. 2
-        p2 = propiedad_filas_prop(A, dec=4)
-
-        # Prop. 3
-        p3 = propiedad_swap_signo(A, dec=4)
-
-        # Prop. 4  <<< usa k editable >>>
-        try:
-            k_val = float(evaluar_expresion(self.k_prop4.text()))
-        except Exception as e:
-            raise ValueError(f"Escalar k inválido: {e}")
-        p4 = propiedad_multiplicar_fila(A, k_val, dec=4)
-
-        # Prop. 5 (como la tengas ahora)
-        # Si la haces con B = A^T:
-        from algebra_vector import columnas
-        B = [fila[:] for fila in columnas(A)]
-        p5 = propiedad_multiplicativa(A, B, dec=4)
-
-        # Render de salida (igual que ya tienes)
-        lines = []
-        lines += ["[Propiedad 1] Fila/columna cero → det(A)=0."] + p1["pasos"] + [p1["conclusion"], ""]
-        lines += ["[Propiedad 2] Filas/columnas proporcionales → det(A)=0."] + p2["pasos"] + [p2["conclusion"], ""]
-        lines += ["[Propiedad 3] Intercambio de filas cambia el signo."] + p3["pasos"] + [p3["conclusion"], ""]
-        lines += [f"[Propiedad 4] Multiplicar fila por k escala det por k (k={k_val})."] + p4["pasos"] + [p4["conclusion"], ""]
-        lines += ["[Propiedad 5] det(AB) = det(A)·det(B)."] + p5["pasos"] + [p5["conclusion"]]
-
-        self._set_text("\n".join(lines))
-
-    except Exception as e:
-        self._set_text(f"Error: {e}")
 
 # =========================
 #   Ventana principal
