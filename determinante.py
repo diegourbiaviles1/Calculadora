@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import List, Dict, Any
 from utilidad import fmt_number, DEFAULT_DEC, format_matrix_bracket
+from fractions import Fraction
 
 Matriz = List[List[float]]
 
@@ -27,159 +28,343 @@ def _mejor_fila_para_expandir(A: Matriz) -> int:
     zeros_por_fila = [sum(1 for x in fila if abs(x) < 1e-15) for fila in A]
     return max(range(len(A)), key=lambda r: zeros_por_fila[r])
 
-# ---------- Cofactores (Laplace con pasos visibles) ----------
-def det_cofactores(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
+def det_cofactores(
+    A: Matriz,
+    dec: int = DEFAULT_DEC,
+    expand_index: int = 0,
+    modo: str = "renglon"  # "renglon" o "columna"
+) -> Dict[str, Any]:
     """
-    Determinante por expansión de cofactores (Laplace) con TRAZA paso a paso:
-      - Muestra la matriz actual
-      - Indica la fila elegida para expandir
-      - Escribe cada término:  (-1)^{i+j} · a_{ij} · det(M_{ij})
-      - Muestra los menores con formato de matriz
-      - Casos base (1×1, 2×2) explicados con fórmula explícita
-    """
-    _check_square(A)
-    pasos: List[str] = []
-
-    def _det_rec(M: Matriz, nivel: int) -> float:
-        n = len(M)
-        indent = "  " * nivel
-        pasos.append(indent + "Matriz en este nivel:\n" + indent + format_matrix_bracket(M, dec))
-
-        if n == 1:
-            val = M[0][0]
-            pasos.append(indent + f"Caso 1×1: det([[{fmt_number(val,dec)}]]) = {fmt_number(val,dec)}")
-            return val
-
-        if n == 2:
-            a,b = M[0][0], M[0][1]
-            c,d = M[1][0], M[1][1]
-            val = a*d - b*c
-            pasos.append(indent + "Caso 2×2: det([[a,b],[c,d]]) = ad − bc")
-            pasos.append(indent + f"= {fmt_number(a,dec)}·{fmt_number(d,dec)} − {fmt_number(b,dec)}·{fmt_number(c,dec)}")
-            pasos.append(indent + f"= {fmt_number(val,dec)}")
-            return val
-
-        if n == 3:
-            a = M
-            t1 = a[0][0]*a[1][1]*a[2][2]
-            t2 = a[0][1]*a[1][2]*a[2][0]
-            t3 = a[0][2]*a[1][0]*a[2][1]
-            u1 = a[0][2]*a[1][1]*a[2][0]
-            u2 = a[0][0]*a[1][2]*a[2][1]
-            u3 = a[0][1]*a[1][0]*a[2][2]
-            pasos.append(indent + "Caso 3×3 (fórmula completa):")
-            pasos.append(indent + f"+ {fmt_number(a[0][0],dec)}·{fmt_number(a[1][1],dec)}·{fmt_number(a[2][2],dec)}"
-                                   f" + {fmt_number(a[0][1],dec)}·{fmt_number(a[1][2],dec)}·{fmt_number(a[2][0],dec)}"
-                                   f" + {fmt_number(a[0][2],dec)}·{fmt_number(a[1][0],dec)}·{fmt_number(a[2][1],dec)}")
-            pasos.append(indent + f"− {fmt_number(a[0][2],dec)}·{fmt_number(a[1][1],dec)}·{fmt_number(a[2][0],dec)}"
-                                   f" − {fmt_number(a[0][0],dec)}·{fmt_number(a[1][2],dec)}·{fmt_number(a[2][1],dec)}"
-                                   f" − {fmt_number(a[0][1],dec)}·{fmt_number(a[1][0],dec)}·{fmt_number(a[2][2],dec)}")
-            val = (t1+t2+t3) - (u1+u2+u3)
-            pasos.append(indent + f"= {fmt_number(val,dec)}")
-            return val
-
-        fila = _mejor_fila_para_expandir(M)
-        pasos.append(indent + f"Expansión por la fila {fila+1} (se eligió por tener más ceros).")
-        total = 0.0
-        partes = []
-        for j, aij in enumerate(M[fila]):
-            if abs(aij) < 1e-15:  # término nulo
-                continue
-            sgn = _cof_sign(fila, j)
-            cof = "(-1)^{i+j} = -1" if sgn < 0 else "(-1)^{i+j} = 1"
-            Mm = _minor(M, fila, j)
-            pasos.append(indent + f"Término (i={fila+1}, j={j+1}):  {cof},  a[{fila+1},{j+1}]={fmt_number(aij,dec)}")
-            pasos.append(indent + "Menor M_{ij} (eliminando fila y columna):\n" + indent + format_matrix_bracket(Mm, dec))
-            sub = _det_rec(Mm, nivel+1)
-            term = sgn * aij * sub
-            partes.append(f"{'+' if sgn>0 else '-'} {fmt_number(abs(aij),dec)}·det(M_{fila+1},{j+1}) = {fmt_number(term,dec)}")
-            total += term
-        pasos.append(indent + "Suma de términos: " + "  ".join(partes))
-        pasos.append(indent + f"det = {fmt_number(total,dec)}")
-        return total
-
-    val = _det_rec(A, 0)
-    return {"metodo": "cofactores", "det": val, "pasos": pasos,
-            "conclusion": f"det(A) = {fmt_number(val, dec)}"}
-
-# ---------- Regla de Sarrus (solo 3×3) con diagonales explícitas ----------
-def det_sarrus(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
-    _check_square(A)
-    if len(A) != 3:
-        raise ValueError("La regla de Sarrus solo aplica a matrices 3×3.")
-    a = A
-    pasos: List[str] = []
-    pasos.append("Matriz A:\n" + format_matrix_bracket(a, dec))
-    pasos.append("Extiende las dos primeras columnas a la derecha (solo para visualizar diagonales).")
-
-    # Diagonales principales
-    d1 = a[0][0]*a[1][1]*a[2][2]
-    d2 = a[0][1]*a[1][2]*a[2][0]
-    d3 = a[0][2]*a[1][0]*a[2][1]
-    pasos.append(f"Diagonales principales: "
-                 f"{fmt_number(a[0][0],dec)}·{fmt_number(a[1][1],dec)}·{fmt_number(a[2][2],dec)} = {fmt_number(d1,dec)}, "
-                 f"{fmt_number(a[0][1],dec)}·{fmt_number(a[1][2],dec)}·{fmt_number(a[2][0],dec)} = {fmt_number(d2,dec)}, "
-                 f"{fmt_number(a[0][2],dec)}·{fmt_number(a[1][0],dec)}·{fmt_number(a[2][1],dec)} = {fmt_number(d3,dec)}")
-    pos = d1 + d2 + d3
-    pasos.append(f"Suma de principales: {fmt_number(pos,dec)}")
-
-    # Diagonales secundarias
-    e1 = a[0][2]*a[1][1]*a[2][0]
-    e2 = a[0][0]*a[1][2]*a[2][1]
-    e3 = a[0][1]*a[1][0]*a[2][2]
-    pasos.append(f"Diagonales secundarias: "
-                 f"{fmt_number(a[0][2],dec)}·{fmt_number(a[1][1],dec)}·{fmt_number(a[2][0],dec)} = {fmt_number(e1,dec)}, "
-                 f"{fmt_number(a[0][0],dec)}·{fmt_number(a[1][2],dec)}·{fmt_number(a[2][1],dec)} = {fmt_number(e2,dec)}, "
-                 f"{fmt_number(a[0][1],dec)}·{fmt_number(a[1][0],dec)}·{fmt_number(a[2][2],dec)} = {fmt_number(e3,dec)}")
-    neg = e1 + e2 + e3
-    pasos.append(f"Suma de secundarias: {fmt_number(neg,dec)}")
-
-    val = pos - neg
-    pasos.append(f"det(A) = (suma principales) − (suma secundarias) = {fmt_number(pos,dec)} − {fmt_number(neg,dec)} = {fmt_number(val,dec)}")
-    return {"metodo": "sarrus", "det": val, "pasos": pasos,
-            "conclusion": f"det(A) = {fmt_number(val, dec)}"}
-
-# ---------- Cramer (ilustrativo: det(A) y det(A_j(b)) con pasos) ----------
-def det_por_cramer(A: Matriz, b: List[float] | None = None, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
-    """
-    Muestra el rol de determinantes en Cramer:
-      - Calcula det(A) (con pasos de cofactores).
-      - Si se da b, construye A_j(b), imprime A_j y calcula det(A_j) con sus propios pasos.
-      - Concluye con la fórmula x_j = det(A_j)/det(A) cuando det(A)≠0.
+    Determinante por cofactores con formato compacto (pizarra):
+      - Puede expandir por un renglón o una columna (modo).
+      - Muestra mapa de signos.
+      - Usa notación con barras |A|.
+      - Formato de 4 líneas para claridad.
     """
     _check_square(A)
     n = len(A)
-    pasos: List[str] = ["--- Método de Cramer (traza de determinantes) ---",
-                        "A (matriz de coeficientes):\n" + format_matrix_bracket(A, dec)]
-    base = det_cofactores(A, dec=dec)
-    detA = base["det"]
-    pasos += ["\nCálculo de det(A):"] + base["pasos"]
-    if b is not None:
-        if len(b) != n:
-            raise ValueError("Dimensión de b incompatible.")
-        pasos.append("\nVector independiente b:\n" + "\n".join([f"[{fmt_number(x,dec)}]" for x in b]))
-        dets_Aj = []
+    if not (0 <= expand_index < n):
+        raise ValueError("expand_index fuera de rango.")
+    if modo not in ("renglon", "columna"):
+        raise ValueError("modo debe ser 'renglon' o 'columna'.")
+
+    pasos: List[str] = []
+
+    # --- Helpers ---
+    def _sgn(i: int, j: int) -> int:
+        return 1 if ((i + j) % 2 == 0) else -1
+
+    def _sym(s: int) -> str:
+        return "+" if s > 0 else "−"
+
+    def _bars_inline(M: Matriz, deci: int) -> str:
+        filas = [" ".join(fmt_number(x, deci) for x in fila) for fila in M]
+        return "| " + " ; ".join(filas) + " |"
+
+    def _det_numeric(M: Matriz) -> float:
+        k = len(M)
+        if k == 1:
+            return float(M[0][0])
+        if k == 2:
+            a, b = float(M[0][0]), float(M[0][1])
+            c, d = float(M[1][0]), float(M[1][1])
+            return a * d - b * c
+        total = 0.0
+        for j in range(k):
+            aij = float(M[0][j])
+            if abs(aij) < 1e-15:
+                continue
+            total += _sgn(0, j) * aij * _det_numeric(_minor(M, 0, j))
+        return total
+
+    def _minor_expr_or_value(M: Matriz, deci: int) -> str:
+        if len(M) == 2:
+            a, b = fmt_number(M[0][0], deci), fmt_number(M[0][1], deci)
+            c, d = fmt_number(M[1][0], deci), fmt_number(M[1][1], deci)
+            return f"{a}·{d} − {b}·{c}"
+        return fmt_number(_det_numeric(M), deci)
+
+    def _bars_block(M: Matriz, deci: int) -> str:
+        if not M:
+            return "| |"
+        r, c = len(M), len(M[0])
+        grid = [[fmt_number(x, deci, False) for x in fila] for fila in M]
+        widths = [max(len(grid[i][j]) for i in range(r)) for j in range(c)]
+        lines = []
+        for i in range(r):
+            cells = "  ".join(grid[i][j].rjust(widths[j]) for j in range(c))
+            lines.append(f"| {cells} |")
+        return "\n".join(lines)
+
+    # --- Cabecera ---
+    if modo == "renglon":
+        pasos.append(f"[Cofactores]\nUsando el renglón {expand_index+1} (expansión por cofactores):")
+    else:
+        pasos.append(f"[Cofactores]\nUsando la columna {expand_index+1} (expansión por cofactores):")
+
+    pasos.append("Matriz actual entre barras:")
+    pasos.append(_bars_block(A, dec))
+
+    # --- Mapa de signos ---
+    pasos.append("Mapa de signos de cofactores (+/−):")
+    for i in range(n):
+        pasos.append("  ".join(_sym(_sgn(i, j)) for j in range(n)))
+
+    # --- Seleccionar elementos según modo ---
+    terms = []
+    if modo == "renglon":
         for j in range(n):
-            Aj = [fila[:] for fila in A]
-            for i in range(n):
-                Aj[i][j] = b[i]
-            pasos.append(f"\nReemplazo de columna {j+1} por b → A_{j+1}(b):\n" + format_matrix_bracket(Aj, dec))
-            dj = det_cofactores(Aj, dec=dec)
-            dets_Aj.append(dj["det"])
-            pasos.append(f"Cálculo de det(A_{j+1}):")
-            pasos += dj["pasos"]
-            pasos.append(f"Resultado: det(A_{j+1}) = {fmt_number(dj['det'],dec)}")
-        pasos.append("\nSi det(A) ≠ 0, entonces para cada j:  x_j = det(A_j)/det(A).")
-        return {"metodo": "cramer", "det": detA, "detA_j": dets_Aj, "pasos": pasos,
-                "conclusion": f"det(A) = {fmt_number(detA, dec)}"}
-    return {"metodo": "cramer", "det": detA, "pasos": pasos,
-            "conclusion": f"det(A) = {fmt_number(detA, dec)}"}
+            aij = float(A[expand_index][j])
+            if abs(aij) < 1e-15:
+                continue
+            s = _sgn(expand_index, j)
+            Mij = _minor(A, expand_index, j)
+            detM = _det_numeric(Mij)
+            terms.append({"s": s, "val": aij, "M": Mij, "detM": detM})
+    else:  # columna
+        for i in range(n):
+            aij = float(A[i][expand_index])
+            if abs(aij) < 1e-15:
+                continue
+            s = _sgn(i, expand_index)
+            Mij = _minor(A, i, expand_index)
+            detM = _det_numeric(Mij)
+            terms.append({"s": s, "val": aij, "M": Mij, "detM": detM})
+
+    if not terms:
+        pasos.append("Todos los términos del renglón/columna son nulos.")
+        return {"metodo": "cofactores", "det": 0.0, "pasos": pasos, "conclusion": "|A| = 0"}
+
+    # --- Línea 1: expansión simbólica ---
+    linea1 = []
+    for k, t in enumerate(terms):
+        sym = "" if (k == 0 and t["s"] > 0) else (" − " if t["s"] < 0 else " + ")
+        linea1.append(f"{sym}{fmt_number(abs(t['val']), dec)}{_bars_inline(t['M'], dec)}")
+    pasos.append("|A| = " + "".join(linea1))
+
+    # --- Línea 2: menores como expresiones ---
+    linea2 = []
+    for k, t in enumerate(terms):
+        sym = "" if (k == 0 and t["s"] > 0) else (" − " if t["s"] < 0 else " + ")
+        linea2.append(f"{sym}{fmt_number(abs(t['val']), dec)}({_minor_expr_or_value(t['M'], dec)})")
+    pasos.append("     = " + "".join(linea2))
+
+    # --- Línea 3: sustituir por valores numéricos ---
+    linea3 = []
+    for k, t in enumerate(terms):
+        sym = "" if (k == 0 and t["s"] > 0) else (" − " if t["s"] < 0 else " + ")
+        linea3.append(f"{sym}{fmt_number(abs(t['val']), dec)}({fmt_number(t['detM'], dec)})")
+    pasos.append("     = " + "".join(linea3))
+
+    # --- Línea 4: resultados finales ---
+    total = sum(t["s"] * t["val"] * t["detM"] for t in terms)
+    productos = []
+    for k, t in enumerate(terms):
+        prod = t["s"] * t["val"] * t["detM"]
+        sym = "" if (k == 0 and prod >= 0) else (" − " if prod < 0 else " + ")
+        productos.append(f"{sym}{fmt_number(abs(prod), dec)}")
+    pasos.append("     = " + "".join(productos) + f" = {fmt_number(total, dec)}")
+
+    return {
+        "metodo": "cofactores",
+        "det": total,
+        "pasos": pasos,
+        "conclusion": f"|A| = {fmt_number(total, dec)}  (usando {'renglón' if modo=='renglon' else 'columna'} {expand_index+1})"
+    }
+
+
+
+
+
+# ---------- Regla de Sarrus (solo 3×3) con diagonales explícitas ----------
+# ---------- Regla de Sarrus (3×3) con matriz extendida y diagonales explícitas ----------
+def det_sarrus(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
+    """
+    Presentación tipo pizarra:
+      • Muestra |A|.
+      • Muestra la matriz extendida (se repiten las dos primeras columnas a la derecha).
+      • Lista y desarrolla cada diagonal ↘ (principal) y ↙ (secundaria).
+      • Escribe el desarrollo: |A| = (suma ↘) − (suma ↙) = ...
+    """
+    _check_square(A)
+    if len(A) != 3 or len(A[0]) != 3:
+        raise ValueError("La regla de Sarrus solo aplica a matrices 3×3.")
+
+    a = A  # alias corto
+    pasos: List[str] = []
+
+    def num(x): return fmt_number(x, dec)
+
+    # 1) Matriz original entre barras
+    pasos.append("[Sarrus]\n")
+    pasos.append("Matriz A entre barras:\n" + format_matrix_bracket(a, dec))
+
+    # 2) Matriz extendida (añadir las dos primeras columnas a la derecha)
+    ext = [
+        [a[0][0], a[0][1], a[0][2], a[0][0], a[0][1]],
+        [a[1][0], a[1][1], a[1][2], a[1][0], a[1][1]],
+        [a[2][0], a[2][1], a[2][2], a[2][0], a[2][1]],
+    ]
+    def format_matrix_bracket_wide(M):
+        rows = []
+        for fila in M:
+            rows.append("[ " + "  ".join(fmt_number(x, dec) for x in fila) + " ]")
+        return "\n".join(rows)
+
+    pasos.append("\nMatriz extendida (se añaden las 2 primeras columnas a la derecha):\n" +
+                 format_matrix_bracket_wide(ext))
+
+    # 3) Diagonales ↘ (principales) y ↙ (secundarias)
+    # Principales: a00·a11·a22, a01·a12·a20, a02·a10·a21
+    d1 = a[0][0] * a[1][1] * a[2][2]
+    d2 = a[0][1] * a[1][2] * a[2][0]
+    d3 = a[0][2] * a[1][0] * a[2][1]
+    # Secundarias: a02·a11·a20, a00·a12·a21, a01·a10·a22
+    e1 = a[0][2] * a[1][1] * a[2][0]
+    e2 = a[0][0] * a[1][2] * a[2][1]
+    e3 = a[0][1] * a[1][0] * a[2][2]
+
+    pasos.append("\nDiagonales  (principales):")
+    pasos.append(f"  {num(a[0][0])}·{num(a[1][1])}·{num(a[2][2])} = {num(d1)}")
+    pasos.append(f"  {num(a[0][1])}·{num(a[1][2])}·{num(a[2][0])} = {num(d2)}")
+    pasos.append(f"  {num(a[0][2])}·{num(a[1][0])}·{num(a[2][1])} = {num(d3)}")
+    pos = d1 + d2 + d3
+    pasos.append(f"  Suma = {num(d1)} + {num(d2)} + {num(d3)} = {num(pos)}")
+
+    pasos.append("\nDiagonales  (secundarias):")
+    pasos.append(f"  {num(a[0][2])}·{num(a[1][1])}·{num(a[2][0])} = {num(e1)}")
+    pasos.append(f"  {num(a[0][0])}·{num(a[1][2])}·{num(a[2][1])} = {num(e2)}")
+    pasos.append(f"  {num(a[0][1])}·{num(a[1][0])}·{num(a[2][2])} = {num(e3)}")
+    neg = e1 + e2 + e3
+    pasos.append(f"  Suma = {num(e1)} + {num(e2)} + {num(e3)} = {num(neg)}")
+
+    # 4) Desarrollo final estilo pizarra
+    pasos.append("\nDesarrollo:")
+    pasos.append(f"  |A| = (Suma ) − (Suma )")
+    pasos.append(f"= ({num(d1)} + {num(d2)} + {num(d3)}) − ({num(e1)} + {num(e2)} + {num(e3)})")
+    pasos.append(f"= {num(pos)} − {num(neg)}")
+
+    val = pos - neg
+    pasos.append(f"= {num(val)}")
+
+    return {
+        "metodo": "sarrus",
+        "det": val,
+        "pasos": pasos,
+        "conclusion": f"|A| = {fmt_number(val, dec)}"
+    }
+
+# ---------- Helper: determinante 3x3 por Sarrus (vertical) con pasos ----------
+def _det3_sarrus_vertical(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
+    """
+    Calcula el determinante 3x3 por Sarrus (vertical) y genera 
+    pasos detallados, imitando el formato de las imágenes.
+    Ej: (4 - 18 + 1) - (4 + 6 - 3)
+    """
+    
+    # Validar que sea 3x3 (aunque la función padre ya lo hizo)
+    if len(A) != 3 or len(A[0]) != 3:
+        raise ValueError("Esta función Sarrus es solo para 3x3.")
+
+    # Extraer los 9 números
+    a, b, c = A[0]
+    d, e, f = A[1]
+    g, h, i = A[2]
+
+    # 1. Calcular productos de diagonales principales (positivas)
+    # (a*e*i), (d*h*c), (g*b*f)
+    p1 = a * e * i
+    p2 = d * h * c
+    p3 = g * b * f
+    
+    # 2. Calcular productos de diagonales secundarias (negativas)
+    # (c*e*g), (f*h*a), (i*b*d)
+    s1 = c * e * g
+    s2 = f * h * a
+    s3 = i * b * d
+
+    # 3. Sumar
+    sum_pos = p1 + p2 + p3
+    sum_neg = s1 + s2 + s3
+    
+    # 4. Total
+    det = sum_pos - sum_neg
+
+    # 5. Generar los pasos (el formato de las imágenes)
+    pasos = []
+    
+    # Formatear los productos individuales
+    fp1, fp2, fp3 = fmt_number(p1, dec), fmt_number(p2, dec), fmt_number(p3, dec)
+    fs1, fs2, fs3 = fmt_number(s1, dec), fmt_number(s2, dec), fmt_number(s3, dec)
+
+    # Paso 1: Mostrar la línea de cálculo principal
+    # Usamos paréntesis para números negativos para mayor claridad
+    str_pos_nums = f"{fp1} + ({fp2}) + {fp3}" if p2 < 0 else f"{fp1} + {fp2} + {fp3}"
+    str_pos_nums = str_pos_nums.replace(" + -", " - ") # Limpieza simple
+    
+    str_neg_nums = f"{fs1} + {fs2} + ({fs3})" if s3 < 0 else f"{fs1} + {fs2} + {fs3}"
+    str_neg_nums = str_neg_nums.replace(" + -", " - ") # Limpieza simple
+
+    pasos.append(f"   Cálculo: (Diagonales +) - (Diagonales -)")
+    pasos.append(f"   = [{str_pos_nums}] - [{str_neg_nums}]")
+
+    # Paso 2: Mostrar los resultados intermedios
+    pasos.append(f"   = {fmt_number(sum_pos, dec)} - ({fmt_number(sum_neg, dec)})")
+    
+    # Paso 3: Mostrar el resultado final
+    pasos.append(f"   = {fmt_number(det, dec)}")
+    
+    return {"det": det, "pasos": pasos}
+
+# ---------- Cramer (ilustrativo): det(A) y det(A_j(b)) con pasos detallados ----------
+def det_por_cramer(A: Matriz, b: List[float] | None = None, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
+    """
+    Implementación ilustrativa de Cramer para 3×3.
+    MODIFICADA: Esta versión solo calcula y muestra |A| por Sarrus vertical.
+    """
+    # Validaciones básicas
+    if not A or not A[0]:
+        raise ValueError("Matriz A vacía.")
+    n = len(A)
+    if any(len(f) != len(A[0]) for f in A) or len(A) != len(A[0]):
+        raise ValueError("A debe ser cuadrada.")
+    if n != 3:
+        return {
+            "metodo": "cramer",
+            "pasos": [f"Vista ilustrativa por diagonales disponible solo para 3×3 (n={n})."],
+            "conclusion": "Use Gauss-Jordan para resolver o reduzca a 3×3 para esta demostración."
+        }
+
+    pasos: List[str] = ["--- Regla de Cramer (determinantes por diagonales: Sarrus) ---"]
+    pasos.append("A (matriz de coeficientes):\n" + format_matrix_bracket(A, dec))
+
+    # |A|
+    detA_info = _det3_sarrus_vertical(A, dec=dec) # Llamando a la versión detallada
+    detA = detA_info["det"]
+    pasos.append("\nCálculo de |A| por diagonales:")
+    pasos += detA_info["pasos"]
+    pasos.append(f"\nConclusión: |A| = {fmt_number(detA, dec)}")
+
+    out: Dict[str, Any] = {"metodo": "cramer", "det": detA, "pasos": pasos, "conclusion": f"|A| = {fmt_number(detA, dec)}"}
+
+    # --- MODIFICACIÓN CLAVE ---
+    # Terminamos aquí para mostrar solo el cálculo de |A|
+    return out
+    # --- FIN DE LA MODIFICACIÓN ---
+
+    # El siguiente código (cálculo de A_j y x_j) ya no se ejecutará.
+    if b is None:
+        return out
+    if len(b) != n:
+        raise ValueError("Dimensión de b incompatible con A.")
+
+    # ... (todo el resto de la función original) ...
 
 # ---------- Interpretación de invertibilidad ----------
 def interpretar_invertibilidad(detA: float, dec: int = DEFAULT_DEC) -> str:
     if abs(detA) < 1e-12:
-        return "det(A) = 0 → A es singular, NO tiene inversa."
-    return "det(A) ≠ 0 → A es no singular (invertible)."
+        return "det|A| = 0 → A es singular, NO tiene inversa."
+    return "det|A| ≠ 0 → A es no singular (invertible)."
 
 # ---------- Propiedades del determinante ----------
 def propiedad_fila_col_cero(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
@@ -193,16 +378,16 @@ def propiedad_fila_col_cero(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]
             if all(abs(A[i][j]) < 1e-15 for i in range(n)):
                 col_cero = j; break
     if fila_cero is not None:
-        pasos.append(f"Fila {fila_cero+1} es cero ⇒ det(A)=0.")
+        pasos.append(f"Fila {fila_cero+1} es cero ⇒ det|A|=0.")
     elif col_cero is not None:
-        pasos.append(f"Columna {col_cero+1} es cero ⇒ det(A)=0.")
+        pasos.append(f"Columna {col_cero+1} es cero ⇒ det|A|=0.")
     else:
-        pasos.append("No hay fila/columna cero; se calcula det(A) para verificar.")
+        pasos.append("No hay fila/columna cero; se calcula det|A| para verificar.")
     detA = det_cofactores(A, dec=dec)["det"]
-    conclusion = "Se cumple: fila/columna cero ⇒ det(A)=0." if (fila_cero is not None or col_cero is not None) else \
+    conclusion = "Se cumple: fila/columna cero ⇒ det|A|=0." if (fila_cero is not None or col_cero is not None) else \
                  "No hay fila/columna cero; la propiedad aplica cuando exista tal fila/columna."
     return {"propiedad": 1, "det": detA, "pasos": pasos,
-            "conclusion": f"{conclusion}  det(A)={fmt_number(detA,dec)}"}
+            "conclusion": f"{conclusion}  det|A|={fmt_number(detA,dec)}"}
 
 def propiedad_filas_prop(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
     _check_square(A)
@@ -224,15 +409,15 @@ def propiedad_filas_prop(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
     for i in range(n):
         for j in range(i+1,n):
             if _proporcionales(A[i],A[j]):
-                pasos.append(f"Filas {i+1} y {j+1} son iguales/proporcionales ⇒ det(A)=0.")
+                pasos.append(f"Filas {i+1} y {j+1} son iguales/proporcionales ⇒ det|A|=0.")
                 has = True
     if not has:
         pasos.append("No se detectaron filas proporcionales en la matriz dada.")
     detA = det_cofactores(A, dec=dec)["det"]
-    conclusion = "Se cumple: hay filas/columnas proporcionales ⇒ det(A)=0." if has else \
+    conclusion = "Se cumple: hay filas/columnas proporcionales ⇒ det|A|=0." if has else \
                  "No hubo filas proporcionales; la propiedad aplica cuando existan."
     return {"propiedad": 2, "det": detA, "pasos": pasos,
-            "conclusion": f"{conclusion}  det(A)={fmt_number(detA,dec)}"}
+            "conclusion": f"{conclusion}  det|A|={fmt_number(detA,dec)}"}
 
 def propiedad_swap_signo(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
     _check_square(A)
@@ -243,10 +428,10 @@ def propiedad_swap_signo(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
     pasos.append("Intercambio de filas F1 ↔ F2 → matriz B:\n" + format_matrix_bracket(B, dec))
     detA = det_cofactores(A, dec=dec)["det"]
     detB = det_cofactores(B, dec=dec)["det"]
-    pasos.append(f"det(A)={fmt_number(detA,dec)}; det(B)={fmt_number(detB,dec)}")
+    pasos.append(f"det|A|={fmt_number(detA,dec)}; det|B|={fmt_number(detB,dec)}")
     ok = abs(detB + detA) < 1e-9
-    concl = "Se cumple: det(B) = -det(A)." if ok else "No se verificó el cambio de signo (revisa datos numéricos)."
-    return {"propiedad": 3, "pasos": pasos, "detA": detA, "detB": detB, "conclusion": concl}
+    concl = "Se cumple: det|B| = -det|A|." if ok else "No se verificó el cambio de signo (revisa datos numéricos)."
+    return {"propiedad": 3, "pasos": pasos, "|A|": detA, "|B|": detB, "conclusion": concl}
 
 def propiedad_multiplicar_fila(A: Matriz, k: float, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
     _check_square(A)
@@ -258,10 +443,10 @@ def propiedad_multiplicar_fila(A: Matriz, k: float, dec: int = DEFAULT_DEC) -> D
     pasos.append(f"Multiplicar F1 por k={fmt_number(k,dec)} → matriz B:\n" + format_matrix_bracket(B, dec))
     detA = det_cofactores(A, dec=dec)["det"]
     detB = det_cofactores(B, dec=dec)["det"]
-    pasos.append(f"det(A)={fmt_number(detA,dec)}; det(B)={fmt_number(detB,dec)}")
+    pasos.append(f"det|A|={fmt_number(detA,dec)}; det|B|={fmt_number(detB,dec)}")
     ok = abs(detB - k*detA) < 1e-9
-    concl = "Se cumple: det(B) = k·det(A)." if ok else "No se verificó proporcionalidad exacta (numérico)."
-    return {"propiedad": 4, "pasos": pasos, "detA": detA, "detB": detB, "conclusion": concl}
+    concl = "Se cumple: det|B| = k·det|A|." if ok else "No se verificó proporcionalidad exacta (numérico)."
+    return {"propiedad": 4, "pasos": pasos, "|A|": detA, "|B|": detB, "conclusion": concl}
 
 def propiedad_multiplicativa(A: Matriz, B: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
     _check_square(A); _check_square(B)
@@ -284,7 +469,7 @@ def propiedad_multiplicativa(A: Matriz, B: Matriz, dec: int = DEFAULT_DEC) -> Di
     detA = det_cofactores(A, dec=dec)["det"]
     detB = det_cofactores(B, dec=dec)["det"]
     detC = det_cofactores(C, dec=dec)["det"]
-    pasos.append(f"\ndet(A)={fmt_number(detA,dec)}, det(B)={fmt_number(detB,dec)}, det(AB)={fmt_number(detC,dec)}")
+    pasos.append(f"\ndet|A|={fmt_number(detA,dec)}, det|B|={fmt_number(detB,dec)}, det|AB|={fmt_number(detC,dec)}")
     ok = abs(detC - detA*detB) < 1e-8
-    concl = "Se cumple: det(AB) = det(A)·det(B)." if ok else "No se verificó igualdad exacta (afecta redondeo)."
-    return {"propiedad": 5, "pasos": pasos, "detA": detA, "detB": detB, "detAB": detC, "conclusion": concl}
+    concl = "Se cumple: det|AB| = det|A|·det|B|." if ok else "No se verificó igualdad exacta (afecta redondeo)."
+    return {"propiedad": 5, "pasos": pasos, "|A|": detA, "|B|": detB, "|AB|": detC, "conclusion": concl}
