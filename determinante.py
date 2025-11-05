@@ -315,12 +315,46 @@ def _det3_sarrus_vertical(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
     pasos.append(f"   = {fmt_number(det, dec)}")
     
     return {"det": det, "pasos": pasos}
+# ---------- Helper: determinante 2x2 por fórmula con pasos ----------
+def _det2_formula(A: Matriz, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
+    """
+    Calcula el determinante 2x2 por ad-bc y genera pasos.
+    """
+    if len(A) != 2 or len(A[0]) != 2:
+        raise ValueError("Esta función es solo para 2x2.")
+    
+    # Extraer los 4 números
+    a, b = A[0]
+    c, d = A[1]
+    
+    det = (a * d) - (b * c)
+    
+    # Formatear
+    fa, fb = fmt_number(a, dec), fmt_number(b, dec)
+    fc, fd = fmt_number(c, dec), fmt_number(d, dec)
+    f_prod1 = fmt_number(a * d, dec)
+    f_prod2 = fmt_number(b * c, dec)
 
+    pasos = []
+    pasos.append(f"   Cálculo: (a·d) - (b·c)")
+    pasos.append(f"   = ({fa} · {fd}) - ({fb} · {fc})")
+    
+    # Añade paréntesis al segundo producto si es negativo
+    if (b * c) < 0:
+        pasos.append(f"   = {f_prod1} - ({f_prod2})")
+    else:
+        pasos.append(f"   = {f_prod1} - {f_prod2}")
+        
+    pasos.append(f"   = {fmt_number(det, dec)}")
+    
+    return {"det": det, "pasos": pasos}
+
+# ---------- Cramer (ilustrativo): det(A) y det(A_j(b)) con pasos detallados ----------
 # ---------- Cramer (ilustrativo): det(A) y det(A_j(b)) con pasos detallados ----------
 def det_por_cramer(A: Matriz, b: List[float] | None = None, dec: int = DEFAULT_DEC) -> Dict[str, Any]:
     """
-    Implementación ilustrativa de Cramer para 3×3.
-    MODIFICADA: Esta versión solo calcula y muestra |A| por Sarrus vertical.
+    Implementación ilustrativa de Cramer para 2x2 y 3×3.
+    MODIFICADA: Esta versión solo calcula y muestra |A| por Sarrus (3x3) o ad-bc (2x2).
     """
     # Validaciones básicas
     if not A or not A[0]:
@@ -328,26 +362,39 @@ def det_por_cramer(A: Matriz, b: List[float] | None = None, dec: int = DEFAULT_D
     n = len(A)
     if any(len(f) != len(A[0]) for f in A) or len(A) != len(A[0]):
         raise ValueError("A debe ser cuadrada.")
-    if n != 3:
+
+    # --- MODIFICACIÓN CLAVE 1: Aceptar 2x2 o 3x3 ---
+    if n not in (2, 3):
+        # Calculamos el det real por cofactores para devolverlo y evitar el KeyError
+        detA_err = det_cofactores(A, dec=dec)["det"] 
         return {
             "metodo": "cramer",
-            "pasos": [f"Vista ilustrativa por diagonales disponible solo para 3×3 (n={n})."],
-            "conclusion": "Use Gauss-Jordan para resolver o reduzca a 3×3 para esta demostración."
+            "det": detA_err, # <-- SE AÑADE ESTA LÍNEA PARA EVITAR EL CRASH
+            "pasos": [f"Vista ilustrativa por diagonales disponible solo para 2×2 o 3×3 (n={n}).",
+                      "El valor del determinante mostrado se calculó por 'Cofactores'."],
+            "conclusion": "Use 'Cofactores' para esta demostración."
         }
+    # --- FIN DE LA MODIFICACIÓN 1 ---
 
-    pasos: List[str] = ["--- Regla de Cramer (determinantes por diagonales: Sarrus) ---"]
+    pasos: List[str] = ["--- Regla de Cramer (determinantes por diagonales) ---"]
     pasos.append("A (matriz de coeficientes):\n" + format_matrix_bracket(A, dec))
 
-    # |A|
-    detA_info = _det3_sarrus_vertical(A, dec=dec) # Llamando a la versión detallada
+    # --- MODIFICACIÓN 2: Seleccionar helper 2x2 o 3x3 ---
+    if n == 2:
+        pasos.append("\nCálculo de |A| por fórmula (ad-bc):")
+        detA_info = _det2_formula(A, dec=dec) # <-- LLAMAR A LA NUEVA FUNCIÓN 2x2
+    else:  # n == 3
+        pasos.append("\nCálculo de |A| por diagonales (Sarrus):")
+        detA_info = _det3_sarrus_vertical(A, dec=dec) # <-- LLAMAR A LA FUNCIÓN EXISTENTE
+    
     detA = detA_info["det"]
-    pasos.append("\nCálculo de |A| por diagonales:")
     pasos += detA_info["pasos"]
     pasos.append(f"\nConclusión: |A| = {fmt_number(detA, dec)}")
+    # --- FIN DE LA MODIFICACIÓN 2 ---
 
     out: Dict[str, Any] = {"metodo": "cramer", "det": detA, "pasos": pasos, "conclusion": f"|A| = {fmt_number(detA, dec)}"}
 
-    # --- MODIFICACIÓN CLAVE ---
+    # --- MODIFICACIÓN CLAVE (existente) ---
     # Terminamos aquí para mostrar solo el cálculo de |A|
     return out
     # --- FIN DE LA MODIFICACIÓN ---
