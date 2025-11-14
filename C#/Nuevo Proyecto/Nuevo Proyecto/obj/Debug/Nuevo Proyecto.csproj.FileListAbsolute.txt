@@ -1,9 +1,0 @@
-C:\Users\basti\OneDrive\Documents\Programming\C#\Nuevo Proyecto\Nuevo Proyecto\bin\Debug\Nuevo Proyecto.exe.config
-C:\Users\basti\OneDrive\Documents\Programming\C#\Nuevo Proyecto\Nuevo Proyecto\bin\Debug\Nuevo Proyecto.exe
-C:\Users\basti\OneDrive\Documents\Programming\C#\Nuevo Proyecto\Nuevo Proyecto\bin\Debug\Nuevo Proyecto.pdb
-C:\Users\basti\OneDrive\Documents\Programming\C#\Nuevo Proyecto\Nuevo Proyecto\obj\Debug\Nuevo Proyecto.csproj.AssemblyReference.cache
-C:\Users\basti\OneDrive\Documents\Programming\C#\Nuevo Proyecto\Nuevo Proyecto\obj\Debug\Nuevo_Proyecto.Properties.Resources.resources
-C:\Users\basti\OneDrive\Documents\Programming\C#\Nuevo Proyecto\Nuevo Proyecto\obj\Debug\Nuevo Proyecto.csproj.GenerateResource.cache
-C:\Users\basti\OneDrive\Documents\Programming\C#\Nuevo Proyecto\Nuevo Proyecto\obj\Debug\Nuevo Proyecto.csproj.CoreCompileInputs.cache
-C:\Users\basti\OneDrive\Documents\Programming\C#\Nuevo Proyecto\Nuevo Proyecto\obj\Debug\Nuevo Proyecto.exe
-C:\Users\basti\OneDrive\Documents\Programming\C#\Nuevo Proyecto\Nuevo Proyecto\obj\Debug\Nuevo Proyecto.pdb
