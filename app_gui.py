@@ -1,9 +1,10 @@
-# app_gui.py — GUI PyQt6 completa (incluye Programa 6: Inversa por Gauss–Jordan)
+
 from __future__ import annotations
 from typing import List
 import sys
 import re
 from fractions import Fraction
+import math
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 
@@ -14,10 +15,29 @@ from algebra_vector import *
 from matrices import *
 from inversa import *
 from determinante import *
+from metodosNumericos import *
 
 # =========================
 #   Helpers de parsing
 # =========================
+def eval_fx(expr: str, x: float) -> float:
+    """
+    Evalúa una expresión tipo 'x^3 - x - 1' en el valor x.
+    Soporta funciones de math: sin, cos, exp, log, etc.
+    """
+    expr = (expr or "").strip()
+    if not expr:
+        raise ValueError("La expresión de f(x) está vacía.")
+    expr = expr.replace("^", "**")
+
+    # Solo habilitamos 'x' y funciones de math
+    allowed = {name: getattr(math, name) for name in dir(math) if not name.startswith("_")}
+    allowed["x"] = x
+    try:
+        return float(eval(expr, {"__builtins__": {}}, allowed))
+    except Exception as e:
+        raise ValueError(f"No se pudo evaluar f(x). Revisa la expresión. Detalle: {e}")
+
 def parse_nums(line: str) -> List[float]:
     line = (line or "").replace("|", " ")
     parts = [p for p in line.replace(",", " ").split() if p]
@@ -1908,23 +1928,375 @@ class TabDeterminante(QtWidgets.QWidget):
             self._set_text(f"Error: {e}")
 
 
+class TabMetodosNumericos(QtWidgets.QWidget):
+    """
+    Pestaña para el Programa 8:
+      - Notación posicional
+      - Cálculo de errores
+      - Propagación del error
+      - Conceptos
+      - Raíces de ecuaciones no lineales (Regla falsa) + tabla de errores
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        mlay = QtWidgets.QVBoxLayout(self)
+
+        # --- Menú de selección de operación ---
+        top_bar = QtWidgets.QHBoxLayout()
+        self.op_selector = QtWidgets.QComboBox()
+        self.op_selector.addItems([
+            "1) Notación Posicional (Bases)",
+            "2) Cálculo de Errores (ea, er, er%)",
+            "3) Propagación de Error (fija f(x) = sin(x) + x²)",
+            "4) Conceptos y Punto Flotante",
+            "5) Raíces de ecuaciones no lineales (Regla falsa)"
+        ])
+        top_bar.addWidget(QtWidgets.QLabel("Operación:"))
+        top_bar.addWidget(self.op_selector, 1)
+        mlay.addLayout(top_bar)
+        
+        # --- Contenedor de páginas ---
+        self.stack = QtWidgets.QStackedWidget()
+        self.stack.addWidget(self._create_posicional_page())         # index 0
+        self.stack.addWidget(self._create_calculo_error_page())      # index 1
+        self.stack.addWidget(self._create_propagacion_page())        # index 2
+        self.stack.addWidget(self._create_conceptos_page())          # index 3
+        self.stack.addWidget(self._create_raices_page())             # index 4  👈 NUEVO
+        mlay.addWidget(self.stack)
+        
+        self.out = OutputArea()
+        self.out.setReadOnly(True)
+        self.out.setFont(mono_font())
+        mlay.addWidget(self.out)
+
+        # --- Botón de formato fracciones/decimales ---
+        self._show_frac = False
+        self._last_dec = ""
+        self._last_frac = ""
+        self.btn_fmt = btn("Cambiar a fracciones")
+        mlay.addWidget(self.btn_fmt, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.btn_fmt.clicked.connect(self._toggle_fmt)
+        
+        self.op_selector.currentIndexChanged.connect(self.stack.setCurrentIndex)
+    
+    # ===== helpers formato salida =====
+    def _set_text(self, base_text: str):
+        self._last_dec = text_to_decimals(base_text)
+        self._last_frac = text_to_fractions(base_text)
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    def _toggle_fmt(self):
+        self._show_frac = not self._show_frac
+        self.btn_fmt.setText("Cambiar a decimales" if self._show_frac else "Cambiar a fracciones")
+        self.out.clear_and_write(self._last_frac if self._show_frac else self._last_dec)
+
+    # =======================
+    #   Página 1: Notación Posicional
+    # =======================
+    def _create_posicional_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        
+        group_b10 = QtWidgets.QGroupBox("Base 10")
+        layout_b10 = QtWidgets.QVBoxLayout(group_b10)
+        self.in_base10 = LabeledEdit("Número Base 10:", "84506", default_value="84506")
+        btn_b10 = btn("Descomponer Base 10")
+        btn_b10.clicked.connect(self.on_run_base10)
+        layout_b10.addWidget(self.in_base10)
+        layout_b10.addWidget(btn_b10)
+        
+        group_b2 = QtWidgets.QGroupBox("Base 2")
+        layout_b2 = QtWidgets.QVBoxLayout(group_b2)
+        self.in_base2 = LabeledEdit("Número Base 2:", "1111001", default_value="1111001")
+        btn_b2 = btn("Descomponer Base 2 y convertir a Base 10")
+        btn_b2.clicked.connect(self.on_run_base2)
+        layout_b2.addWidget(self.in_base2)
+        layout_b2.addWidget(btn_b2)
+        
+        layout.addWidget(group_b10)
+        layout.addWidget(group_b2)
+        layout.addStretch(1)
+        return page
+
+    # =======================
+    #   Página 2: Cálculo de errores
+    # =======================
+    def _create_calculo_error_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        group = QtWidgets.QGroupBox("Cálculo de Error Absoluto y Relativo")
+        gl = QtWidgets.QVBoxLayout(group)
+        
+        self.in_xv = LabeledEdit("Valor Verdadero (xv):", "1/3", default_value="1/3")
+        self.in_xa = LabeledEdit("Valor Aproximado (xa):", "0.333", default_value="0.333")
+        btn_run = btn("Calcular Errores")
+        btn_run.clicked.connect(self.on_run_calc_errores)
+        
+        gl.addWidget(self.in_xv)
+        gl.addWidget(self.in_xa)
+        gl.addWidget(btn_run)
+        
+        layout.addWidget(group)
+        layout.addStretch(1)
+        return page
+
+    # =======================
+    #   Página 3: Propagación de error
+    # =======================
+    def _create_propagacion_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        group = QtWidgets.QGroupBox("Propagación de Error")
+        gl = QtWidgets.QVBoxLayout(group)
+        
+        gl.addWidget(QtWidgets.QLabel("Función fija: f(x) = sin(x) + x²"))
+        gl.addWidget(QtWidgets.QLabel("Derivada: f'(x) = cos(x) + 2x"))
+        
+        self.in_prop_x = LabeledEdit("Valor de x (rad):", "0.5", default_value="0.5")
+        self.in_prop_dx = LabeledEdit("Incertidumbre (Δx):", "0.002", default_value="0.002")
+        btn_run = btn("Estimar Error Propagado (Δy)")
+        btn_run.clicked.connect(self.on_run_propagacion)
+        
+        gl.addWidget(self.in_prop_x)
+        gl.addWidget(self.in_prop_dx)
+        gl.addWidget(btn_run)
+        
+        layout.addWidget(group)
+        layout.addStretch(1)
+        return page
+
+    # =======================
+    #   Página 4: Conceptos
+    # =======================
+    def _create_conceptos_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        group = QtWidgets.QGroupBox("Conceptos Teóricos")
+        gl = QtWidgets.QVBoxLayout(group)
+
+        btn_conceptos = btn("Mostrar Conceptos de Error")
+        btn_conceptos.clicked.connect(self.on_run_conceptos)
+        
+        btn_flotante = btn("Mostrar Paradoja de Punto Flotante (0.1 + 0.2)")
+        btn_flotante.clicked.connect(self.on_run_punto_flotante)
+
+        gl.addWidget(btn_conceptos)
+        gl.addWidget(btn_flotante)
+        
+        layout.addWidget(group)
+        layout.addStretch(1)
+        return page
+
+    # =======================
+    #   Página 5: Raíces (Regla falsa)
+    # =======================
+    def _create_raices_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+
+        group = QtWidgets.QGroupBox("Raíces de ecuaciones no lineales — Método de Regla Falsa")
+        gl = QtWidgets.QVBoxLayout(group)
+
+        # f(x)
+        self.in_fx = LabeledEdit("f(x) =", "x^3 - x - 1", default_value="x^3 - x - 1")
+        gl.addWidget(self.in_fx)
+
+        # Intervalo y parámetros
+        row1 = QtWidgets.QHBoxLayout()
+        self.in_a = LabeledEdit("Extremo izquierdo a:", "1", default_value="1")
+        self.in_b = LabeledEdit("Extremo derecho b:", "2", default_value="2")
+        self.in_tol = LabeledEdit("Tolerancia:", "1e-4", default_value="1e-4")
+        self.in_maxit = LabeledEdit("Máx. iteraciones:", "20", default_value="20")
+        row1.addWidget(self.in_a)
+        row1.addWidget(self.in_b)
+        row1.addWidget(self.in_tol)
+        row1.addWidget(self.in_maxit)
+        gl.addLayout(row1)
+
+        # Método (por ahora solo Regla falsa, pero queda listo para más)
+        row2 = QtWidgets.QHBoxLayout()
+        row2.addWidget(QtWidgets.QLabel("Método:"))
+        self.cb_metodo = QtWidgets.QComboBox()
+        self.cb_metodo.addItems(["Regla falsa (posición falsa)"])
+        row2.addWidget(self.cb_metodo)
+        row2.addStretch(1)
+        gl.addLayout(row2)
+
+        # Botón calcular
+        btn_run = btn("Calcular raíz y tabla de errores")
+        btn_run.clicked.connect(self.on_run_raices)
+        gl.addWidget(btn_run)
+
+        layout.addWidget(group)
+        layout.addStretch(1)
+        return page
+
+    # =======================
+    #   Handlers para botones
+    # =======================
+    def on_run_base10(self):
+        try:
+            num_str = self.in_base10.text()
+            out = descomponer_base10(num_str)
+            lines = ["--- Descomposición Base 10 ---"] + out["pasos"]
+            lines += ["", "Resultado:", out["conclusion"]]
+            self._set_text("\n".join(lines))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+    def on_run_base2(self):
+        try:
+            num_str = self.in_base2.text()
+            out = descomponer_base2(num_str)
+            lines = ["--- Descomposición Base 2 ---"] + out["pasos"]
+            lines += ["", "Resultado:", out["conclusion"]]
+            self._set_text("\n".join(lines))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+    def on_run_calc_errores(self):
+        try:
+            xv = self.in_xv.text()
+            xa = self.in_xa.text()
+            out = calcular_errores(xv, xa)
+            lines = out["pasos"]
+            lines += ["", "Interpretación:", out["conclusion"]]
+            self._set_text("\n".join(lines))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+            
+    def on_run_propagacion(self):
+        try:
+            x = self.in_prop_x.text()
+            dx = self.in_prop_dx.text()
+            out = propagar_error_fijo(x, dx)
+            lines = out["pasos"]
+            lines += ["", "Conclusión:", out["conclusion"]]
+            self._set_text("\n".join(lines))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+    def on_run_conceptos(self):
+        try:
+            out = conceptos_y_punto_flotante()
+            lines = ["--- Conceptos de Error ---"]
+            for (titulo, desc) in out["conceptos"]:
+                lines.append(f"\n{titulo}:\n{desc}\n")
+            self._set_text("\n".join(lines))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+    def on_run_punto_flotante(self):
+        try:
+            out = conceptos_y_punto_flotante()
+            self._set_text("\n".join(out["punto_flotante"]))
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+    # ===== NUEVO: cálculo de raíz por regla falsa =====
+    def on_run_raices(self):
+        try:
+            expr = self.in_fx.text()
+            a = float(evaluar_expresion(self.in_a.text()))
+            b = float(evaluar_expresion(self.in_b.text()))
+            tol = float(evaluar_expresion(self.in_tol.text()))
+            maxit = int(evaluar_expresion(self.in_maxit.text()))
+
+            tabla, raiz, it_real = self._regla_falsa(expr, a, b, tol, maxit)
+
+            lines = []
+            lines.append("=== Método de Regla Falsa ===")
+            lines.append(f"f(x) = {expr}")
+            lines.append(f"Intervalo inicial: [{a}, {b}]")
+            lines.append(f"Tolerancia: {tol}   Máx. iteraciones: {maxit}")
+            lines.append("")
+            lines.append("Iter   a           b           xr          f(xr)       ea          er%")
+            lines.append("-"*78)
+            lines.extend(tabla)
+            lines.append("")
+            lines.append(f"Raíz aproximada: x ≈ {fmt_number(raiz, 6)} (en {it_real} iteraciones)")
+
+            self._set_text("\n".join(lines))
+
+        except Exception as e:
+            self._set_text(f"Error: {e}")
+
+    def _regla_falsa(self, expr: str, a0: float, b0: float, tol: float, maxit: int):
+        """
+        Implementación sencilla de la Regla Falsa.
+        Devuelve:
+          - tabla: lista de filas ya formateadas en texto
+          - raiz: último xr
+          - it_real: número de iteraciones realizadas
+        """
+        fa = eval_fx(expr, a0)
+        fb = eval_fx(expr, b0)
+        if fa * fb > 0:
+            raise ValueError("f(a) y f(b) tienen el mismo signo. No hay garantía de raíz en [a,b].")
+
+        tabla = []
+        xr_prev = None
+        a, b = a0, b0
+
+        for it in range(1, maxit + 1):
+            fa = eval_fx(expr, a)
+            fb = eval_fx(expr, b)
+            xr = b - fb * (a - b) / (fa - fb)
+            fxr = eval_fx(expr, xr)
+
+            if xr_prev is None:
+                ea = 0.0
+                erp = 0.0
+            else:
+                ea = abs(xr - xr_prev)
+                erp = (ea / abs(xr)) * 100 if xr != 0 else 0.0
+
+            fila_txt = (
+                f"{it:>4}  "
+                f"{fmt_number(a, 6):>10}  "
+                f"{fmt_number(b, 6):>10}  "
+                f"{fmt_number(xr, 6):>10}  "
+                f"{fmt_number(fxr, 6):>10}  "
+                f"{fmt_number(ea, 6):>10}  "
+                f"{fmt_number(erp, 4):>8}"
+            )
+            tabla.append(fila_txt)
+
+            # Criterio de paro
+            if abs(fxr) < tol or (xr_prev is not None and ea < tol):
+                return tabla, xr, it
+
+            # Actualizar intervalo
+            if fa * fxr < 0:
+                b = xr
+            else:
+                a = xr
+            xr_prev = xr
+
+        # Si se termina por iteraciones:
+        return tabla, xr, maxit
+
+
+
+
 # =========================
 #   Ventana principal
 # =========================
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Álgebra Lineal — GUI (PyQt6)")
+        self.setWindowTitle("Álgebra Lineal ")
         self.resize(1200, 820)
 
         tabs = QtWidgets.QTabWidget()
         tabs.addTab(TabGaussJordan(), "Gauss-Jordan (Ab)")
         tabs.addTab(TabAXeqB(), "AX=B")
-        tabs.addTab(TabProg4(), "Dependencia")         # 👈 renombrado
+        tabs.addTab(TabProg4(), "Dependencia")         
         tabs.addTab(TabVectores(), "Vectores")
         tabs.addTab(TabProg5(), "Operaciones con Matrices")
         tabs.addTab(TabProg6(), "Inversa")
         tabs.addTab(TabDeterminante(), "Determinante")   
+        tabs.addTab(TabMetodosNumericos(), "Métodos Numéricos") 
 
         self.setCentralWidget(tabs)
         self.statusBar().showMessage("Listo")
@@ -1937,7 +2309,7 @@ class MainWindow(QtWidgets.QMainWindow):
 # =========================
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    apply_green_theme(app)  # 👈 aplica el look & feel verde
+    apply_green_theme(app)  
 
     w = MainWindow()
     w.show()

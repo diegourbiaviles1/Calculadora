@@ -4,10 +4,7 @@ from typing import List, Dict, Any
 import math
 
 from sistema_lineal import SistemaLineal
-from utilidad import (
-    DEFAULT_EPS, is_close, vec_suma, escalar_por_vector, zeros,
-    sumar_vec, dot_mat_vec, columnas, format_col_vector, format_matrix_bracket
-)
+from utilidad import *
 
 # -----------------------------
 # Validaciones internas básicas
