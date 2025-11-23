@@ -75,9 +75,12 @@ def biseccion_descriptiva(
       - expresion
       - intervalo_inicial
       - tolerancia
-      - pasos  (lista de dicts)
+      - pasos  (lista de dicts con a, b, xr, f(xr), ea, er, er%)
       - raiz_aproximada
       - valor_funcion_en_raiz
+      - iteraciones_totales
+      - error_relativo_porcentual_final
+      - criterio_de_paro (tolerancia / max_iter / sin_iteraciones)
     """
     f = _make_func(expresion)
     a = float(a_inicial)
@@ -87,7 +90,7 @@ def biseccion_descriptiva(
     fa, fb = f(a), f(b)
     if fa * fb > 0:
         raise ValueError(
-            "Para aplicar Bisección se requiere f(a)·f(b) < 0 "
+            "El intervalo no es válido. Se requiere f(a)·f(b) < 0 "
             "(la función debe cambiar de signo en [a,b])."
         )
 
@@ -121,7 +124,7 @@ def biseccion_descriptiva(
             }
         )
 
-        # criterio de paro por tolerancia
+        # criterio de paro por tolerancia (error absoluto entre aproximaciones)
         if ea is not None and ea < tol:
             break
 
@@ -135,6 +138,21 @@ def biseccion_descriptiva(
 
         xr_anterior = xr
 
+    # Resumen de iteraciones y error relativo porcentual final
+    if pasos:
+        ultimo_paso = pasos[-1]
+        ea_final = ultimo_paso["error_absoluto_ea"]
+        iteraciones_totales = len(pasos)
+        error_relativo_porcentual_final = ultimo_paso["error_relativo_porcentual"]
+        if ea_final is not None and ea_final < tol:
+            criterio_de_paro = "tolerancia"
+        else:
+            criterio_de_paro = "max_iter"
+    else:
+        iteraciones_totales = 0
+        error_relativo_porcentual_final = None
+        criterio_de_paro = "sin_iteraciones"
+
     raiz = xr
     valor_en_raiz = f(raiz)
 
@@ -146,6 +164,9 @@ def biseccion_descriptiva(
         "pasos": pasos,
         "raiz_aproximada": raiz,
         "valor_funcion_en_raiz": valor_en_raiz,
+        "iteraciones_totales": iteraciones_totales,
+        "error_relativo_porcentual_final": error_relativo_porcentual_final,
+        "criterio_de_paro": criterio_de_paro,
     }
 
 
@@ -169,7 +190,7 @@ def regla_falsa_descriptiva(
     fa, fb = f(a), f(b)
     if fa * fb > 0:
         raise ValueError(
-            "Para aplicar Regla Falsa se requiere f(a)·f(b) < 0 "
+            "El intervalo no es válido. Se requiere f(a)·f(b) < 0 "
             "(la función debe cambiar de signo en [a,b])."
         )
 
@@ -178,7 +199,7 @@ def regla_falsa_descriptiva(
     xr: float = b
 
     for it in range(1, max_iter + 1):
-        # fórmula de regla falsa
+        # fórmula de regla falsa (punto de intersección con el eje x)
         xr = b - fb * (b - a) / (fb - fa)
         fxr = f(xr)
 
@@ -216,6 +237,21 @@ def regla_falsa_descriptiva(
 
         xr_anterior = xr
 
+    # Resumen de iteraciones y error relativo porcentual final
+    if pasos:
+        ultimo_paso = pasos[-1]
+        ea_final = ultimo_paso["error_absoluto_ea"]
+        iteraciones_totales = len(pasos)
+        error_relativo_porcentual_final = ultimo_paso["error_relativo_porcentual"]
+        if ea_final is not None and ea_final < tol:
+            criterio_de_paro = "tolerancia"
+        else:
+            criterio_de_paro = "max_iter"
+    else:
+        iteraciones_totales = 0
+        error_relativo_porcentual_final = None
+        criterio_de_paro = "sin_iteraciones"
+
     raiz = xr
     valor_en_raiz = f(raiz)
 
@@ -227,7 +263,44 @@ def regla_falsa_descriptiva(
         "pasos": pasos,
         "raiz_aproximada": raiz,
         "valor_funcion_en_raiz": valor_en_raiz,
+        "iteraciones_totales": iteraciones_totales,
+        "error_relativo_porcentual_final": error_relativo_porcentual_final,
+        "criterio_de_paro": criterio_de_paro,
     }
+
+
+# Funciones envoltorio para cumplir con la especificación del programa
+# Permiten invocar simplemente biseccion(...) y regla_falsa(...)
+# usando la misma lógica implementada en las versiones descriptivas.
+
+def biseccion(
+    expresion: str,
+    a_inicial: float,
+    b_inicial: float,
+    tolerancia: float,
+    max_iter: int = 50,
+) -> Dict[str, Any]:
+    """
+    Método de Bisección básico.
+    Envoltorio sobre biseccion_descriptiva para facilitar su uso
+    fuera de la interfaz gráfica.
+    """
+    return biseccion_descriptiva(expresion, a_inicial, b_inicial, tolerancia, max_iter)
+
+
+def regla_falsa(
+    expresion: str,
+    a_inicial: float,
+    b_inicial: float,
+    tolerancia: float,
+    max_iter: int = 50,
+) -> Dict[str, Any]:
+    """
+    Método de Regla Falsa básico.
+    Envoltorio sobre regla_falsa_descriptiva para facilitar su uso
+    fuera de la interfaz gráfica.
+    """
+    return regla_falsa_descriptiva(expresion, a_inicial, b_inicial, tolerancia, max_iter)
 
 
 # ======================================================
@@ -326,25 +399,30 @@ def propagacion_error(
 
     sin usar NumPy ni SciPy.
     """
-    f = _make_func(expresion)
-    x0 = float(x0)
-    dx = float(delta_x)
+    try:
+        f = _make_func(expresion)
+        x0 = float(x0)
+        dx = float(delta_x)
 
-    y0 = f(x0)
-    y1 = f(x0 + dx)
-    dy = y1 - y0
+        y0 = f(x0)
+        y1 = f(x0 + dx)
+        dy = y1 - y0
 
-    ea_y = abs(dy)
-    er_y = ea_y / abs(y0) if y0 != 0 else None
-    erp_y = er_y * 100.0 if er_y is not None else None
+        ea_y = abs(dy)
+        er_y = ea_y / abs(y0) if y0 != 0 else None
+        erp_y = er_y * 100.0 if er_y is not None else None
 
-    return {
-        "x0": x0,
-        "delta_x": dx,
-        "y0": y0,
-        "y1": y1,
-        "delta_y": dy,
-        "error_absoluto_y": ea_y,
-        "error_relativo_y": er_y,
-        "error_relativo_porcentual_y": erp_y,
-    }
+        return {
+            "x0": x0,
+            "delta_x": dx,
+            "y0": y0,
+            "y1": y1,
+            "delta_y": dy,
+            "error_absoluto_y": ea_y,
+            "error_relativo_y": er_y,
+            "error_relativo_porcentual_y": erp_y,
+        }
+    except Exception:
+        # Si algo falla al evaluar la función, lanzamos un error claro
+        raise ValueError("No se pudo calcular la propagación del error. Verifique f(x), x0 y Δx.")
+

@@ -1,19 +1,46 @@
 # GUI_TabMetodosNumericos.py
 from __future__ import annotations
 from PyQt6 import QtWidgets, QtCore, QtGui
+
 from widgets import LabeledEdit, OutputArea, btn
-from metodos_numericos import biseccion_descriptiva, regla_falsa_descriptiva, calcular_errores, tipos_de_error_texto, ejemplo_punto_flotante_texto, propagacion_error
+from metodos_numericos import (
+    biseccion_descriptiva,
+    regla_falsa_descriptiva,
+    calcular_errores,
+    tipos_de_error_texto,
+    ejemplo_punto_flotante_texto,
+    propagacion_error,
+)
 from notacion_posicional import descomponer_base10, descomponer_base2
 from utilidad import fmt_number, DEFAULT_DEC
 
+
 class TabMetodosNumericos(QtWidgets.QWidget):
-    """Pestaña: Métodos numéricos y errores."""
+    """
+    Pestaña: Métodos numéricos, errores y notación posicional.
+
+    Se divide internamente en tres subpestañas para que la información
+    se vea más ordenada:
+        1) Métodos de raíces (Bisección / Regla Falsa)
+        2) Errores numéricos y propagación del error
+        3) Notación posicional (base 10 y base 2)
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
+
         main = QtWidgets.QVBoxLayout(self)
 
-        # ====== Bloque 1: Raíces de ecuaciones no lineales ======
-        grp_raices = QtWidgets.QGroupBox("Raíces de ecuaciones no lineales — Métodos numéricos")
+        # Contenedor de subpestañas
+        self.tabs = QtWidgets.QTabWidget()
+        main.addWidget(self.tabs)
+
+        # --------------------------------------------------
+        # Tab 1: Métodos de raíces (Programa 9)
+        # --------------------------------------------------
+        tab_raices = QtWidgets.QWidget()
+        lay_raices = QtWidgets.QVBoxLayout(tab_raices)
+
+        grp_raices = QtWidgets.QGroupBox("Raíces de ecuaciones no lineales — Métodos cerrados")
         v_raices = QtWidgets.QVBoxLayout(grp_raices)
 
         fila_fx = QtWidgets.QHBoxLayout()
@@ -34,7 +61,7 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         fila_int.addWidget(QtWidgets.QLabel("Extremo derecho b:"))
         fila_int.addWidget(self.ed_b)
         fila_int.addSpacing(10)
-        fila_int.addWidget(QtWidgets.QLabel("Tolerancia:"))
+        fila_int.addWidget(QtWidgets.QLabel("Error deseado (tolerancia):"))
         fila_int.addWidget(self.ed_tol)
         fila_int.addSpacing(10)
         fila_int.addWidget(QtWidgets.QLabel("Máx. iteraciones:"))
@@ -53,13 +80,23 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         self.btn_calcular_raiz.clicked.connect(self.on_calcular_raiz)
         v_raices.addWidget(self.btn_calcular_raiz)
 
+        # Área de salida amplia para ver bien la tabla completa
         self.out_raices = OutputArea()
         v_raices.addWidget(self.out_raices)
 
-        main.addWidget(grp_raices)
+        lay_raices.addWidget(grp_raices)
+        lay_raices.addStretch(1)
 
-        # ====== Bloque 2: Errores numéricos ======
-        grp_err = QtWidgets.QGroupBox("Errores numéricos | Error absoluto, relativo y tipos de error")
+        self.tabs.addTab(tab_raices, "Métodos de raíces")
+
+        # --------------------------------------------------
+        # Tab 2: Errores numéricos y propagación (Programa 8)
+        # --------------------------------------------------
+        tab_errores = QtWidgets.QWidget()
+        lay_errores = QtWidgets.QVBoxLayout(tab_errores)
+
+        # --- Bloque: errores absoluto / relativo / relativo porcentual ---
+        grp_err = QtWidgets.QGroupBox("Errores numéricos: error absoluto, relativo y relativo porcentual")
         v_err = QtWidgets.QVBoxLayout(grp_err)
 
         fila_val = QtWidgets.QHBoxLayout()
@@ -75,9 +112,9 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         fila_btn_err = QtWidgets.QHBoxLayout()
         self.btn_calc_err = btn("Calcular ea, er y er%")
         self.btn_calc_err.clicked.connect(self.on_calcular_errores)
-        self.btn_tipos_err = btn("Mostrar tipos de error", kind="ghost")
+        self.btn_tipos_err = btn("Tipos de error (teoría)", kind="ghost")
         self.btn_tipos_err.clicked.connect(self.on_tipos_error)
-        self.btn_ej_flot = btn("Ejemplo de punto flotante", kind="ghost")
+        self.btn_ej_flot = btn("Ejemplo 0.1 + 0.2", kind="ghost")
         self.btn_ej_flot.clicked.connect(self.on_ejemplo_flotante)
         fila_btn_err.addWidget(self.btn_calc_err)
         fila_btn_err.addWidget(self.btn_tipos_err)
@@ -88,9 +125,46 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         self.out_err = OutputArea()
         v_err.addWidget(self.out_err)
 
-        main.addWidget(grp_err)
+        lay_errores.addWidget(grp_err)
 
-        # ====== Bloque 3: Notación posicional ======
+        # --- Bloque: propagación del error ---
+        grp_prop = QtWidgets.QGroupBox("Propagación del error en una función y = f(x)")
+        v_prop = QtWidgets.QVBoxLayout(grp_prop)
+
+        fila_fx_prop = QtWidgets.QHBoxLayout()
+        self.ed_fx_prop = QtWidgets.QLineEdit("x^2 + 3x")
+        fila_fx_prop.addWidget(QtWidgets.QLabel("f(x) ="))
+        fila_fx_prop.addWidget(self.ed_fx_prop)
+        v_prop.addLayout(fila_fx_prop)
+
+        fila_x0 = QtWidgets.QHBoxLayout()
+        self.ed_x0 = QtWidgets.QLineEdit("2")
+        self.ed_dx = QtWidgets.QLineEdit("0.01")
+        fila_x0.addWidget(QtWidgets.QLabel("Valor central x0:"))
+        fila_x0.addWidget(self.ed_x0)
+        fila_x0.addSpacing(10)
+        fila_x0.addWidget(QtWidgets.QLabel("Error en x (Δx):"))
+        fila_x0.addWidget(self.ed_dx)
+        v_prop.addLayout(fila_x0)
+
+        self.btn_prop = btn("Calcular propagación del error")
+        self.btn_prop.clicked.connect(self.on_propagacion)
+        v_prop.addWidget(self.btn_prop)
+
+        self.out_prop = OutputArea()
+        v_prop.addWidget(self.out_prop)
+
+        lay_errores.addWidget(grp_prop)
+        lay_errores.addStretch(1)
+
+        self.tabs.addTab(tab_errores, "Errores y propagación")
+
+        # --------------------------------------------------
+        # Tab 3: Notación posicional (Programa 8)
+        # --------------------------------------------------
+        tab_notacion = QtWidgets.QWidget()
+        lay_not = QtWidgets.QVBoxLayout(tab_notacion)
+
         grp_not = QtWidgets.QGroupBox("Notación posicional (base 10 y base 2)")
         v_not = QtWidgets.QVBoxLayout(grp_not)
 
@@ -113,41 +187,21 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         self.out_not = OutputArea()
         v_not.addWidget(self.out_not)
 
-        main.addWidget(grp_not)
+        lay_not.addWidget(grp_not)
+        lay_not.addStretch(1)
 
-        # ====== Bloque 4: Propagación del error ======
-        grp_prop = QtWidgets.QGroupBox("Propagación del error en una función f(x)")
-        v_prop = QtWidgets.QVBoxLayout(grp_prop)
+        self.tabs.addTab(tab_notacion, "Notación posicional")
 
-        fila_fx_prop = QtWidgets.QHBoxLayout()
-        self.ed_fx_prop = QtWidgets.QLineEdit("x^2 + 3x")
-        fila_fx_prop.addWidget(QtWidgets.QLabel("f(x) para propagación:"))
-        fila_fx_prop.addWidget(self.ed_fx_prop)
-        v_prop.addLayout(fila_fx_prop)
-
-        fila_x0 = QtWidgets.QHBoxLayout()
-        self.ed_x0 = QtWidgets.QLineEdit("2")
-        self.ed_dx = QtWidgets.QLineEdit("0.01")
-        fila_x0.addWidget(QtWidgets.QLabel("Valor central x0:"))
-        fila_x0.addWidget(self.ed_x0)
-        fila_x0.addSpacing(10)
-        fila_x0.addWidget(QtWidgets.QLabel("Error en x (Δx):"))
-        fila_x0.addWidget(self.ed_dx)
-        v_prop.addLayout(fila_x0)
-
-        self.btn_prop = btn("Calcular propagación del error")
-        self.btn_prop.clicked.connect(self.on_propagacion)
-        v_prop.addWidget(self.btn_prop)
-
-        self.out_prop = OutputArea()
-        v_prop.addWidget(self.out_prop)
-
-        main.addWidget(grp_prop)
-        main.addStretch(1)
-
-    # ================== Handlers ==================
+    # ==================================================
+    # Handlers y helpers
+    # ==================================================
     def _tabla_pasos(self, info):
-        # Helper interno para formatear la tabla de pasos de Bisección/Regla Falsa
+        """
+        Formatea la tabla de iteraciones para Bisección / Regla Falsa.
+
+        Muestra:
+            Iteración, a, b, xr, f(xr), ea, er y er%.
+        """
         pasos = info.get("pasos", [])
         if not pasos:
             return "No se generaron iteraciones."
@@ -157,6 +211,7 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             "-------------------------------------------------------------------------------"
         )
         filas = [header]
+
         for p in pasos:
             it = p["numero_de_iteracion"]
             a = p["extremo_izquierdo_a"]
@@ -198,6 +253,7 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             lineas.append("")
             lineas.append(self._tabla_pasos(info))
             lineas.append("")
+
             lineas.append(
                 "Raíz aproximada: "
                 + fmt_number(info["raiz_aproximada"], DEFAULT_DEC, False)
@@ -207,18 +263,75 @@ class TabMetodosNumericos(QtWidgets.QWidget):
                 + fmt_number(info["valor_funcion_en_raiz"], DEFAULT_DEC, False)
             )
 
+            pasos = info.get("pasos", [])
+            if pasos:
+                ultimo = pasos[-1]
+                iter_tot = info.get("iteraciones_totales", len(pasos))
+                erp_final = ultimo.get("error_relativo_porcentual")
+                ea_final = ultimo.get("error_absoluto_ea")
+
+                lineas.append("Iteraciones totales: " + str(iter_tot))
+
+                if erp_final is None:
+                    erp_str = "---"
+                else:
+                    erp_str = fmt_number(erp_final, DEFAULT_DEC, False)
+
+                lineas.append("Error relativo porcentual final er% = " + erp_str)
+
+                criterio = info.get("criterio_de_paro")
+                if criterio == "tolerancia" and ea_final is not None and ea_final <= tol:
+                    comentario = (
+                        "Comentario: el método alcanzó la tolerancia indicada; "
+                        "la sucesión de aproximaciones se considera convergente "
+                        "en el intervalo dado."
+                    )
+                elif criterio == "max_iter":
+                    comentario = (
+                        "Comentario: se alcanzó el número máximo de iteraciones "
+                        "antes de cumplir la tolerancia; la convergencia aún no "
+                        "queda garantizada con este criterio."
+                    )
+                else:
+                    comentario = (
+                        "Comentario: el proceso de iteraciones se detuvo según "
+                        "el criterio de paro configurado."
+                    )
+                lineas.append(comentario)
+
+            lineas.append("")
+            lineas.append("Recordatorio de las fórmulas de error entre iteraciones:")
+            lineas.append("ea = |xr - xr_anterior|")
+            lineas.append("er = ea / |xr|")
+            lineas.append("er% = er * 100")
+
             self.out_raices.clear_and_write("\n".join(lineas))
         except Exception as e:
-            self.out_raices.clear_and_write(f"Error: {e}")
+            mensaje = str(e)
+            if "El intervalo no es válido" in mensaje:
+                self.out_raices.clear_and_write("El intervalo no es válido")
+            else:
+                self.out_raices.clear_and_write(f"Error: {mensaje}")
 
     def on_calcular_errores(self):
         try:
             m = float(self.ed_val_real.text())
             x = float(self.ed_val_aprox.text())
             info = calcular_errores(m, x)
-            ea = fmt_number(info["error_absoluto"], DEFAULT_DEC, False)
-            er = "---" if info["error_relativo"] is None else fmt_number(info["error_relativo"], DEFAULT_DEC, False)
-            erp = "---" if info["error_relativo_porcentual"] is None else fmt_number(info["error_relativo_porcentual"], DEFAULT_DEC, False)
+
+            # Para errores queremos ver más decimales que en el resto de la app
+            dec_err = 6
+            ea = fmt_number(info["error_absoluto"], dec_err, False)
+            er = (
+                "---"
+                if info["error_relativo"] is None
+                else fmt_number(info["error_relativo"], dec_err, False)
+            )
+            erp = (
+                "---"
+                if info["error_relativo_porcentual"] is None
+                else fmt_number(info["error_relativo_porcentual"], dec_err, False)
+            )
 
             texto = (
                 f"Valor real m = {info['valor_real']}\n"
@@ -256,7 +369,9 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             expr = self.ed_fx_prop.text().strip()
             x0 = float(self.ed_x0.text())
             dx = float(self.ed_dx.text())
+
             info = propagacion_error(expr, x0, dx)
+
             texto = (
                 f"f(x) = {expr}\n"
                 f"x0 = {info['x0']}, Δx = {info['delta_x']}\n\n"
