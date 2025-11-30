@@ -13,6 +13,7 @@ from metodos_numericos import (
     tipos_de_error_texto,
     ejemplo_punto_flotante_texto,
     propagacion_error,
+    generar_reporte_paso_a_paso  # <--- IMPORTANTE: Asegúrate de importar esto
 )
 from notacion_posicional import descomponer_base10, descomponer_base2
 from utilidad import fmt_number, DEFAULT_DEC
@@ -38,14 +39,6 @@ def _parse_funcion(expr_str: str):
 def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: int):
     """
     Método de Newton–Raphson en modo descriptivo para la GUI.
-
-    Devuelve un diccionario con:
-        - metodo
-        - raiz_aproximada
-        - valor_funcion_en_raiz
-        - iteraciones_totales
-        - criterio_de_paro ('tolerancia' o 'max_iter')
-        - pasos: lista de dicts con los datos por iteración
     """
     f, expr = _parse_funcion(expr_str)
     df_expr = sp.diff(expr, x)
@@ -55,7 +48,7 @@ def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: i
     xr_anterior = None
     xr = float(x0)
     criterio = "max_iter"
-    ea = None  # Por si acaso
+    ea = None
 
     for it in range(1, max_iter + 1):
         fx = f(xr)
@@ -78,7 +71,7 @@ def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: i
 
         pasos.append({
             "numero_de_iteracion": it,
-            "extremo_izquierdo_a": None,          # Para reutilizar la misma tabla
+            "extremo_izquierdo_a": None,
             "extremo_derecho_b": None,
             "aproximacion_actual_xr": xr_nuevo,
             "valor_de_la_funcion_en_xr": f(xr_nuevo),
@@ -112,8 +105,6 @@ def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: i
 def secante_descriptiva(expr_str: str, x0: float, x1: float, tol: float, max_iter: int):
     """
     Método de la Secante en modo descriptivo para la GUI.
-
-    Devuelve un diccionario análogo a newton_raphson_descriptiva.
     """
     f, _ = _parse_funcion(expr_str)
 
@@ -174,16 +165,12 @@ def secante_descriptiva(expr_str: str, x0: float, x1: float, tol: float, max_ite
 class TabMetodosNumericos(QtWidgets.QWidget):
     """
     Pestaña: Métodos numéricos, errores y notación posicional.
-
-    Se divide internamente en subpestañas:
-        1) Métodos cerrados (Bisección / Regla Falsa)
-        2) Newton-Raphson
-        3) Secante
-        4) Errores y propagación
-        5) Notación posicional (base 10 y base 2)
     """
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        # Variable para guardar resultados de Bisección/Regla Falsa
+        self.info_raices_cache = None
 
         main = QtWidgets.QVBoxLayout(self)
 
@@ -233,11 +220,19 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         fila_met.addStretch(1)
         v_raices.addLayout(fila_met)
 
+        # Botón Calcular
         self.btn_calcular_raiz = btn("Calcular raíz y tabla de errores")
         self.btn_calcular_raiz.clicked.connect(self.on_calcular_raiz)
         v_raices.addWidget(self.btn_calcular_raiz)
 
-        # Área de salida amplia para ver bien la tabla completa
+        # --- NUEVO BOTÓN: Paso a paso detallado ---
+        self.btn_paso_a_paso = btn("Ver Paso a Paso (Detallado)", kind="ghost")
+        self.btn_paso_a_paso.clicked.connect(self.on_mostrar_detalles)
+        self.btn_paso_a_paso.setEnabled(False)  # Desactivado al inicio
+        v_raices.addWidget(self.btn_paso_a_paso)
+        # ------------------------------------------
+
+        # Área de salida amplia
         self.out_raices = OutputArea()
         v_raices.addWidget(self.out_raices)
 
@@ -341,7 +336,6 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         tab_errores = QtWidgets.QWidget()
         lay_errores = QtWidgets.QVBoxLayout(tab_errores)
 
-        # --- Bloque: errores absoluto / relativo / relativo porcentual ---
         grp_err = QtWidgets.QGroupBox("Errores numéricos: error absoluto, relativo y relativo porcentual")
         v_err = QtWidgets.QVBoxLayout(grp_err)
 
@@ -373,7 +367,6 @@ class TabMetodosNumericos(QtWidgets.QWidget):
 
         lay_errores.addWidget(grp_err)
 
-        # --- Bloque: propagación del error ---
         grp_prop = QtWidgets.QGroupBox("Propagación del error en una función y = f(x)")
         v_prop = QtWidgets.QVBoxLayout(grp_prop)
 
@@ -445,9 +438,6 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         """
         Formatea la tabla de iteraciones para Bisección / Regla Falsa /
         Newton-Raphson / Secante.
-
-        Muestra:
-            Iteración, a, b, xr, f(xr), ea, er y er%.
         """
         pasos = info.get("pasos", [])
         if not pasos:
@@ -494,6 +484,11 @@ class TabMetodosNumericos(QtWidgets.QWidget):
                 info = biseccion_descriptiva(expr, a, b, tol, max_iter)
             else:
                 info = regla_falsa_descriptiva(expr, a, b, tol, max_iter)
+
+            # --- GUARDAR RESULTADO Y ACTIVAR BOTÓN ---
+            self.info_raices_cache = info
+            self.btn_paso_a_paso.setEnabled(True)
+            # -----------------------------------------
 
             lineas = []
             lineas.append(f"Método: {info['metodo']}")
@@ -562,6 +557,41 @@ class TabMetodosNumericos(QtWidgets.QWidget):
                 self.out_raices.clear_and_write("El intervalo no es válido")
             else:
                 self.out_raices.clear_and_write(f"Error: {mensaje}")
+
+    def on_mostrar_detalles(self):
+        if not self.info_raices_cache:
+            return
+        
+        try:
+            # Generar el texto detallado usando la función nueva importada
+            texto_detallado = generar_reporte_paso_a_paso(self.info_raices_cache)
+            
+            # Crear una ventana de diálogo para mostrarlo
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle("Paso a Paso Detallado - " + self.info_raices_cache["metodo"])
+            dialog.resize(700, 700)
+            
+            layout = QtWidgets.QVBoxLayout(dialog)
+            
+            # Área de texto
+            text_edit = QtWidgets.QTextEdit()
+            text_edit.setReadOnly(True)
+            # Fuente monoespaciada
+            font = QtGui.QFont("Consolas", 10) 
+            text_edit.setFont(font)
+            text_edit.setPlainText(texto_detallado)
+            
+            layout.addWidget(text_edit)
+            
+            # Botón cerrar
+            btn_ok = QtWidgets.QPushButton("Cerrar")
+            btn_ok.clicked.connect(dialog.accept)
+            layout.addWidget(btn_ok)
+            
+            dialog.exec()
+            
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Error", f"No se pudo generar el reporte detallado:\n{e}")
 
     # ==================================================
     # Handlers Newton-Raphson
@@ -705,7 +735,6 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             x_val = float(self.ed_val_aprox.text())
             info = calcular_errores(m, x_val)
 
-            # Para errores queremos ver más decimales que en el resto de la app
             dec_err = 6
             ea = fmt_number(info["error_absoluto"], dec_err, False)
             er = (

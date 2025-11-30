@@ -426,3 +426,74 @@ def propagacion_error(
         # Si algo falla al evaluar la función, lanzamos un error claro
         raise ValueError("No se pudo calcular la propagación del error. Verifique f(x), x0 y Δx.")
 
+def generar_reporte_paso_a_paso(info: Dict[str, Any]) -> str:
+    """
+    Genera un reporte textual detallado imitando el estilo de pizarra/diapositiva
+    basado en los pasos calculados previamente.
+    """
+    pasos = info.get("pasos", [])
+    expr_original = info.get("expresion", "f(x)")
+    metodo = info.get("metodo", "")
+    
+    expr_visual = expr_original.replace("**", "^")
+
+    txt = []
+    txt.append(f"=== REPORTE DETALLADO: {metodo.upper()} ===\n")
+    txt.append(f"Función: f(x) = {expr_visual}")
+    txt.append("-" * 60)
+
+    for p in pasos:
+        it = p["numero_de_iteracion"]
+        xl = p["extremo_izquierdo_a"] 
+        xu = p["extremo_derecho_b"]   
+        xr = p["aproximacion_actual_xr"]
+        fxr = p["valor_de_la_funcion_en_xr"]
+        ea = p["error_absoluto_ea"]
+        
+        s_xl = fmt_number(xl, 5)
+        s_xu = fmt_number(xu, 5)
+        s_xr = fmt_number(xr, 5)
+        s_ea = fmt_number(ea, 5) if ea is not None else "---"
+        
+        sub_xl = expr_visual.replace("x", f"({s_xl})")
+        sub_xu = expr_visual.replace("x", f"({s_xu})")
+        sub_xr = expr_visual.replace("x", f"({s_xr})")
+        
+        txt.append(f"\nITERACIÓN {it}:")
+        txt.append(f"--------------------------------------------------")
+        
+        txt.append(f"   xi = {s_xl}      xu = {s_xu}")
+        
+        if "Bisección" in metodo:
+            txt.append(f"   xr = (xi + xu) / 2  -->  xr = ({s_xl} + {s_xu}) / 2 = {s_xr}")
+        else: # Regla Falsa
+
+            txt.append(f"   xr (Falsa Posición) = {s_xr}")
+
+        txt.append(f"   Ea = {s_ea}\n")
+
+        func_eval = _make_func(expr_original)
+        v_i = func_eval(xl)
+        v_u = func_eval(xu)
+        v_r = fxr # Este ya viene calculado
+
+        txt.append(f"   vi = f(xi) = f({s_xl}) = {sub_xl} = {fmt_number(v_i, 5)}")
+        txt.append(f"   vu = f(xu) = f({s_xu}) = {sub_xu} = {fmt_number(v_u, 5)}")
+        txt.append(f"   vr = f(xr) = f({s_xr}) = {sub_xr} = {fmt_number(v_r, 5)}\n")
+
+        # 4. Lógica de cambio de signo
+        signo_vi = "(+)" if v_i >= 0 else "(-)"
+        signo_vr = "(+)" if v_r >= 0 else "(-)"
+        
+        txt.append(f"   Verificación de signos: f(xi) * f(xr)")
+        txt.append(f"   -> {fmt_number(v_i, 5)} * {fmt_number(v_r, 5)}")
+        txt.append(f"   -> {signo_vi} * {signo_vr} {'<' if v_i*v_r < 0 else '>'} 0")
+        
+        if v_i * v_r < 0:
+            txt.append(f"   >>> La raíz está entre [xi, xr] -> [{s_xl}, {s_xr}]")
+        else:
+            txt.append(f"   >>> La raíz está entre [xr, xu] -> [{s_xr}, {s_xu}]")
+        
+        txt.append("\n")
+
+    return "\n".join(txt)
