@@ -1,4 +1,4 @@
-# GUI_TabMetodosNumericos.py
+
 from __future__ import annotations
 from PyQt6 import QtWidgets, QtCore, QtGui
 
@@ -13,7 +13,7 @@ from metodos_numericos import (
     tipos_de_error_texto,
     ejemplo_punto_flotante_texto,
     propagacion_error,
-    generar_reporte_paso_a_paso  # <--- IMPORTANTE: Asegúrate de importar esto
+    generar_reporte_paso_a_paso  # Para métodos cerrados
 )
 from notacion_posicional import descomponer_base10, descomponer_base2
 from utilidad import fmt_number, DEFAULT_DEC
@@ -23,7 +23,7 @@ x = sp.symbols("x")
 
 
 # ==================================================
-# Funciones internas para Newton y Secante
+# Funciones internas para Newton y Secante (MODIFICADAS)
 # ==================================================
 def _parse_funcion(expr_str: str):
     """
@@ -31,6 +31,8 @@ def _parse_funcion(expr_str: str):
     y la expresión simbólica de Sympy.
     """
     expr_str = expr_str.replace("^", "**")
+    # Manejo básico de e^x para sympy
+    expr_str = expr_str.replace("e^", "exp") 
     expr = sp.sympify(expr_str)
     f = sp.lambdify(x, expr, modules=["math"])
     return f, expr
@@ -38,7 +40,7 @@ def _parse_funcion(expr_str: str):
 
 def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: int):
     """
-    Método de Newton–Raphson en modo descriptivo para la GUI.
+    Método de Newton–Raphson con datos extra para el reporte detallado.
     """
     f, expr = _parse_funcion(expr_str)
     df_expr = sp.diff(expr, x)
@@ -50,12 +52,15 @@ def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: i
     criterio = "max_iter"
     ea = None
 
+    # Guardamos la derivada como string para el reporte
+    df_str = str(df_expr).replace("**", "^")
+
     for it in range(1, max_iter + 1):
         fx = f(xr)
         dfx = df(xr)
 
         if dfx == 0:
-            # No se puede continuar si la derivada es cero
+            criterio = "derivada_cero"
             break
 
         xr_nuevo = xr - fx / dfx
@@ -71,10 +76,10 @@ def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: i
 
         pasos.append({
             "numero_de_iteracion": it,
-            "extremo_izquierdo_a": None,
-            "extremo_derecho_b": None,
-            "aproximacion_actual_xr": xr_nuevo,
-            "valor_de_la_funcion_en_xr": f(xr_nuevo),
+            "xi": xr,                 # Valor actual
+            "f_xi": fx,               # f(xi)
+            "df_xi": dfx,             # f'(xi)
+            "xi_nuevo": xr_nuevo,     # El resultado de la fórmula
             "error_absoluto_ea": ea,
             "error_relativo": er,
             "error_relativo_porcentual": erp,
@@ -93,6 +98,8 @@ def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: i
 
     info = {
         "metodo": "Newton-Raphson",
+        "expresion": expr_str,
+        "derivada_str": df_str,
         "raiz_aproximada": raiz,
         "valor_funcion_en_raiz": valor_en_raiz,
         "iteraciones_totales": len(pasos),
@@ -104,24 +111,25 @@ def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: i
 
 def secante_descriptiva(expr_str: str, x0: float, x1: float, tol: float, max_iter: int):
     """
-    Método de la Secante en modo descriptivo para la GUI.
+    Método de la Secante con datos extra para el reporte detallado.
     """
     f, _ = _parse_funcion(expr_str)
 
     pasos = []
-    xr_anterior = float(x0)
-    xr = float(x1)
+    xr_ant = float(x0) # x_{i-1}
+    xr = float(x1)     # x_i
     criterio = "max_iter"
 
     for it in range(1, max_iter + 1):
         f_xr = f(xr)
-        f_xr_ant = f(xr_anterior)
+        f_xr_ant = f(xr_ant)
 
         denominador = (f_xr - f_xr_ant)
         if denominador == 0:
-            break  # Evita división por cero
+            criterio = "denominador_cero"
+            break 
 
-        xr_nuevo = xr - f_xr * (xr - xr_anterior) / denominador
+        xr_nuevo = xr - f_xr * (xr - xr_ant) / denominador
 
         ea = abs(xr_nuevo - xr)
         er = ea / abs(xr_nuevo) if xr_nuevo != 0 else None
@@ -129,10 +137,11 @@ def secante_descriptiva(expr_str: str, x0: float, x1: float, tol: float, max_ite
 
         pasos.append({
             "numero_de_iteracion": it,
-            "extremo_izquierdo_a": None,
-            "extremo_derecho_b": None,
-            "aproximacion_actual_xr": xr_nuevo,
-            "valor_de_la_funcion_en_xr": f(xr_nuevo),
+            "xi_ant": xr_ant,         # x_{i-1}
+            "xi": xr,                 # x_i
+            "f_xi_ant": f_xr_ant,     # f(x_{i-1})
+            "f_xi": f_xr,             # f(x_i)
+            "xi_nuevo": xr_nuevo,     # Resultado
             "error_absoluto_ea": ea,
             "error_relativo": er,
             "error_relativo_porcentual": erp,
@@ -143,13 +152,15 @@ def secante_descriptiva(expr_str: str, x0: float, x1: float, tol: float, max_ite
             xr = xr_nuevo
             break
 
-        xr_anterior, xr = xr, xr_nuevo
+        xr_ant = xr
+        xr = xr_nuevo
 
     raiz = xr
     valor_en_raiz = f(raiz)
 
     info = {
         "metodo": "Secante",
+        "expresion": expr_str,
         "raiz_aproximada": raiz,
         "valor_funcion_en_raiz": valor_en_raiz,
         "iteraciones_totales": len(pasos),
@@ -157,6 +168,86 @@ def secante_descriptiva(expr_str: str, x0: float, x1: float, tol: float, max_ite
         "pasos": pasos,
     }
     return info
+
+# ==================================================
+# Generador de reporte para métodos abiertos
+# ==================================================
+def generar_reporte_abierto(info: dict) -> str:
+    """Genera el texto paso a paso para Newton y Secante."""
+    metodo = info["metodo"]
+    expr_visual = info["expresion"].replace("**", "^")
+    pasos = info["pasos"]
+    
+    lines = []
+    lines.append(f"=== REPORTE DETALLADO: {metodo.upper()} ===")
+    lines.append(f"Función: f(x) = {expr_visual}")
+    
+    if metodo == "Newton-Raphson":
+        lines.append(f"Derivada analítica: f'(x) = {info['derivada_str']}")
+        lines.append("-" * 60)
+        
+        for p in pasos:
+            i = p["numero_de_iteracion"]
+            xi = p["xi"]
+            f_xi = p["f_xi"]
+            df_xi = p["df_xi"]
+            res = p["xi_nuevo"]
+            ea = p["error_absoluto_ea"]
+            
+            s_xi = fmt_number(xi, 6)
+            s_f = fmt_number(f_xi, 6)
+            s_df = fmt_number(df_xi, 6)
+            s_res = fmt_number(res, 6)
+            s_ea = fmt_number(ea, 7) if ea is not None else "---"
+            
+            lines.append(f"\nIteración {i} (desde x{i-1} = {s_xi}):")
+            lines.append(f"   1. Evaluaciones:")
+            lines.append(f"      f({s_xi}) = {s_f}")
+            lines.append(f"      f'({s_xi}) = {s_df}")
+            lines.append(f"   2. Sustituir en fórmula de Newton:")
+            lines.append(f"      x{i} = {s_xi} - ({s_f}) / ({s_df})")
+            lines.append(f"         ≈ {s_res}")
+            
+            if ea is not None:
+                lines.append(f"   3. Error aproximado:")
+                lines.append(f"      Ea = |{s_res} - {s_xi}| ≈ {s_ea}")
+            lines.append("-" * 40)
+
+    elif metodo == "Secante":
+        lines.append("-" * 60)
+        for p in pasos:
+            i = p["numero_de_iteracion"]
+            xi_ant = p["xi_ant"]
+            xi = p["xi"]
+            fi_ant = p["f_xi_ant"]
+            fi = p["f_xi"]
+            res = p["xi_nuevo"]
+            ea = p["error_absoluto_ea"]
+            
+            s_xia = fmt_number(xi_ant, 6)
+            s_xi  = fmt_number(xi, 6)
+            s_fa  = fmt_number(fi_ant, 6)
+            s_fi  = fmt_number(fi, 6)
+            s_res = fmt_number(res, 6)
+            s_ea  = fmt_number(ea, 7) if ea is not None else "---"
+            
+            lines.append(f"\nIteración {i} (usar x{i-2}={s_xia}, x{i-1}={s_xi}):")
+            lines.append(f"   1. Evaluaciones:")
+            lines.append(f"      f({s_xia}) ≈ {s_fa}")
+            lines.append(f"      f({s_xi})  ≈ {s_fi}")
+            lines.append(f"   2. Sustituir en la fórmula de la secante:")
+            # Formula visual: xi - f(xi)*(xi - x_ant) / (f(xi) - f(x_ant))
+            num = f"({s_fi}) * ({s_xi} - {s_xia})"
+            den = f"({s_fi} - {s_fa})"
+            lines.append(f"      x{i} = {s_xi} - [ {num} / {den} ]")
+            lines.append(f"         ≈ {s_res}")
+            
+            if ea is not None:
+                lines.append(f"   Error aproximado respecto al paso anterior:")
+                lines.append(f"      Ea = |{s_res} - {s_xi}| ≈ {s_ea}")
+            lines.append("-" * 40)
+            
+    return "\n".join(lines)
 
 
 # ==================================================
@@ -169,8 +260,10 @@ class TabMetodosNumericos(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        # Variable para guardar resultados de Bisección/Regla Falsa
+        # Caches para guardar info y poder generar reporte detallado
         self.info_raices_cache = None
+        self.info_newton_cache = None
+        self.info_secante_cache = None
 
         main = QtWidgets.QVBoxLayout(self)
 
@@ -220,19 +313,16 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         fila_met.addStretch(1)
         v_raices.addLayout(fila_met)
 
-        # Botón Calcular
+        # Botones Tab 1
         self.btn_calcular_raiz = btn("Calcular raíz y tabla de errores")
         self.btn_calcular_raiz.clicked.connect(self.on_calcular_raiz)
         v_raices.addWidget(self.btn_calcular_raiz)
 
-        # --- NUEVO BOTÓN: Paso a paso detallado ---
         self.btn_paso_a_paso = btn("Ver Paso a Paso (Detallado)", kind="ghost")
         self.btn_paso_a_paso.clicked.connect(self.on_mostrar_detalles)
-        self.btn_paso_a_paso.setEnabled(False)  # Desactivado al inicio
+        self.btn_paso_a_paso.setEnabled(False)
         v_raices.addWidget(self.btn_paso_a_paso)
-        # ------------------------------------------
 
-        # Área de salida amplia
         self.out_raices = OutputArea()
         v_raices.addWidget(self.out_raices)
 
@@ -274,6 +364,13 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         self.btn_newton = btn("Calcular Newton-Raphson")
         self.btn_newton.clicked.connect(self.on_calcular_newton)
         v_newton.addWidget(self.btn_newton)
+
+        # --- NUEVO BOTÓN NEWTON ---
+        self.btn_paso_newton = btn("Ver Paso a Paso (Detallado)", kind="ghost")
+        self.btn_paso_newton.clicked.connect(self.on_mostrar_detalles_newton)
+        self.btn_paso_newton.setEnabled(False)
+        v_newton.addWidget(self.btn_paso_newton)
+        # --------------------------
 
         self.out_newton = OutputArea()
         v_newton.addWidget(self.out_newton)
@@ -321,6 +418,13 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         self.btn_secante = btn("Calcular Secante")
         self.btn_secante.clicked.connect(self.on_calcular_secante)
         v_sec.addWidget(self.btn_secante)
+
+        # --- NUEVO BOTÓN SECANTE ---
+        self.btn_paso_secante = btn("Ver Paso a Paso (Detallado)", kind="ghost")
+        self.btn_paso_secante.clicked.connect(self.on_mostrar_detalles_secante)
+        self.btn_paso_secante.setEnabled(False)
+        v_sec.addWidget(self.btn_paso_secante)
+        # ---------------------------
 
         self.out_secante = OutputArea()
         v_sec.addWidget(self.out_secante)
@@ -443,28 +547,52 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         if not pasos:
             return "No se generaron iteraciones."
 
-        header = (
-            "Iter   a          b          xr         f(xr)        ea           er           er%\n"
-            "-------------------------------------------------------------------------------"
-        )
+        # Detectar tipo para ajustar header
+        if info["metodo"] == "Newton-Raphson":
+             header = (
+                "Iter   xi         f(xi)        f'(xi)       ea           er%\n"
+                "-------------------------------------------------------------------"
+            )
+        elif info["metodo"] == "Secante":
+             header = (
+                "Iter   xi_ant     xi         f(xi)        ea           er%\n"
+                "-------------------------------------------------------------------"
+            )
+        else:
+            header = (
+                "Iter   a          b          xr         f(xr)        ea           er%\n"
+                "-------------------------------------------------------------------------------"
+            )
         filas = [header]
 
         for p in pasos:
             it = p["numero_de_iteracion"]
-            a = p["extremo_izquierdo_a"]
-            b = p["extremo_derecho_b"]
-            xr = p["aproximacion_actual_xr"]
-            fxr = p["valor_de_la_funcion_en_xr"]
-            ea = p["error_absoluto_ea"]
-            er = p["error_relativo"]
-            erp = p["error_relativo_porcentual"]
-
+            
+            # Helper para formatear
             def fval(v):
-                if v is None:
-                    return "   ---   "
+                if v is None: return "   ---   "
                 return fmt_number(float(v), DEFAULT_DEC, False).rjust(10)
 
-            fila = f"{it:>3}  {fval(a)} {fval(b)} {fval(xr)} {fval(fxr)} {fval(ea)} {fval(er)} {fval(erp)}"
+            ea = fval(p.get("error_absoluto_ea"))
+            erp = fval(p.get("error_relativo_porcentual"))
+
+            if info["metodo"] == "Newton-Raphson":
+                xi = fval(p.get("xi"))
+                fxi = fval(p.get("f_xi"))
+                dfxi = fval(p.get("df_xi"))
+                fila = f"{it:>3}  {xi} {fxi} {dfxi} {ea} {erp}"
+            elif info["metodo"] == "Secante":
+                xant = fval(p.get("xi_ant"))
+                xi = fval(p.get("xi"))
+                fxi = fval(p.get("f_xi"))
+                fila = f"{it:>3}  {xant} {xi} {fxi} {ea} {erp}"
+            else:
+                a = fval(p.get("extremo_izquierdo_a"))
+                b = fval(p.get("extremo_derecho_b"))
+                xr = fval(p.get("aproximacion_actual_xr"))
+                fxr = fval(p.get("valor_de_la_funcion_en_xr"))
+                fila = f"{it:>3}  {a} {b} {xr} {fxr} {ea} {erp}"
+            
             filas.append(fila)
 
         return "\n".join(filas)
@@ -559,39 +687,37 @@ class TabMetodosNumericos(QtWidgets.QWidget):
                 self.out_raices.clear_and_write(f"Error: {mensaje}")
 
     def on_mostrar_detalles(self):
-        if not self.info_raices_cache:
-            return
-        
+        """Muestra paso a paso para métodos cerrados"""
+        if not self.info_raices_cache: return
+        self._mostrar_dialogo(generar_reporte_paso_a_paso(self.info_raices_cache), self.info_raices_cache["metodo"])
+
+    def on_mostrar_detalles_newton(self):
+        """Muestra paso a paso para Newton"""
+        if not self.info_newton_cache: return
+        self._mostrar_dialogo(generar_reporte_abierto(self.info_newton_cache), "Newton-Raphson")
+
+    def on_mostrar_detalles_secante(self):
+        """Muestra paso a paso para Secante"""
+        if not self.info_secante_cache: return
+        self._mostrar_dialogo(generar_reporte_abierto(self.info_secante_cache), "Secante")
+
+    def _mostrar_dialogo(self, texto, titulo):
         try:
-            # Generar el texto detallado usando la función nueva importada
-            texto_detallado = generar_reporte_paso_a_paso(self.info_raices_cache)
-            
-            # Crear una ventana de diálogo para mostrarlo
             dialog = QtWidgets.QDialog(self)
-            dialog.setWindowTitle("Paso a Paso Detallado - " + self.info_raices_cache["metodo"])
+            dialog.setWindowTitle(f"Paso a Paso Detallado - {titulo}")
             dialog.resize(700, 700)
-            
             layout = QtWidgets.QVBoxLayout(dialog)
-            
-            # Área de texto
             text_edit = QtWidgets.QTextEdit()
             text_edit.setReadOnly(True)
-            # Fuente monoespaciada
-            font = QtGui.QFont("Consolas", 10) 
-            text_edit.setFont(font)
-            text_edit.setPlainText(texto_detallado)
-            
+            text_edit.setFont(QtGui.QFont("Consolas", 10))
+            text_edit.setPlainText(texto)
             layout.addWidget(text_edit)
-            
-            # Botón cerrar
             btn_ok = QtWidgets.QPushButton("Cerrar")
             btn_ok.clicked.connect(dialog.accept)
             layout.addWidget(btn_ok)
-            
             dialog.exec()
-            
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Error", f"No se pudo generar el reporte detallado:\n{e}")
+            QtWidgets.QMessageBox.critical(self, "Error", f"Error al generar reporte:\n{e}")
 
     # ==================================================
     # Handlers Newton-Raphson
@@ -604,6 +730,10 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             max_iter = int(self.ed_max_newton.text())
 
             info = newton_raphson_descriptiva(expr, x0, tol, max_iter)
+            
+            # GUARDAR CACHE Y ACTIVAR BOTON
+            self.info_newton_cache = info
+            self.btn_paso_newton.setEnabled(True)
 
             lineas = []
             lineas.append(f"Método: {info['metodo']}")
@@ -649,10 +779,7 @@ class TabMetodosNumericos(QtWidgets.QWidget):
                         "o un x0 diferente."
                     )
                 else:
-                    comentario = (
-                        "Comentario: el proceso de iteraciones se detuvo según "
-                        "el criterio de paro configurado."
-                    )
+                    comentario = f"Comentario: criterio de paro '{criterio}'."
                 lineas.append(comentario)
 
             self.out_newton.clear_and_write("\n".join(lineas))
@@ -672,6 +799,10 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             max_iter = int(self.ed_max_secante.text())
 
             info = secante_descriptiva(expr, x0, x1, tol, max_iter)
+            
+            # GUARDAR CACHE Y ACTIVAR BOTON
+            self.info_secante_cache = info
+            self.btn_paso_secante.setEnabled(True)
 
             lineas = []
             lineas.append(f"Método: {info['metodo']}")
@@ -715,10 +846,7 @@ class TabMetodosNumericos(QtWidgets.QWidget):
                         "antes de cumplir la tolerancia; puede requerir mejor intervalo inicial."
                     )
                 else:
-                    comentario = (
-                        "Comentario: el proceso de iteraciones se detuvo según "
-                        "el criterio de paro configurado."
-                    )
+                    comentario = f"Comentario: criterio de paro '{criterio}'."
                 lineas.append(comentario)
 
             self.out_secante.clear_and_write("\n".join(lineas))
