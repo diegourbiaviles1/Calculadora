@@ -5,7 +5,7 @@ import ast
 import operator as op
 from fractions import Fraction
 import math
-import re
+import re  # <--- Importante para las expresiones regulares
 
 # -------------------------
 #  Constantes globales
@@ -21,14 +21,39 @@ _OPS = {
     ast.Pow: op.pow, ast.USub: op.neg, ast.UAdd: lambda x: x
 }
 
-# Diccionario ampliado con trigonométricas y otras funciones de math
+# --- Funciones trigonométricas recíprocas ---
+def sec(x):
+    try: return 1.0 / math.cos(x)
+    except ZeroDivisionError: raise ValueError("Secante indefinida (cos(x)=0).")
+
+def csc(x):
+    try: return 1.0 / math.sin(x)
+    except ZeroDivisionError: raise ValueError("Cosecante indefinida (sin(x)=0).")
+
+def cot(x):
+    try: return 1.0 / math.tan(x)
+    except ZeroDivisionError: raise ValueError("Cotangente indefinida (tan(x)=0).")
+
+# Diccionario ampliado con trigonométricas, alias y otras funciones
 _FUNCS = {
+    # --- Básicas ---
     'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
     'asin': math.asin, 'acos': math.acos, 'atan': math.atan,
     'arcsin': math.asin, 'arccos': math.acos, 'arctan': math.atan,
+    
+    # --- Recíprocas ---
+    'sec': sec, 'csc': csc, 'cot': cot,
+    'cosec': csc, 'ctg': cot,
+
+    # --- Hiperbólicas ---
     'sinh': math.sinh, 'cosh': math.cosh, 'tanh': math.tanh,
+    'asinh': math.asinh, 'acosh': math.acosh, 'atanh': math.atanh,
+
+    # --- Otras ---
     'exp': math.exp, 'log': math.log, 'log10': math.log10, 'ln': math.log,
-    'sqrt': math.sqrt, 'abs': abs,
+    'sqrt': math.sqrt, 
+    'raiz': math.sqrt,  # Alias para raíz cuadrada en español
+    'abs': abs,
     'rad': math.radians, 'deg': math.degrees
 }
 
@@ -76,8 +101,21 @@ def _eval_node(node):
 def evaluar_expresion(txt: str, exacto: bool = False):
     txt = str(txt).strip()
     if not txt: raise ValueError("Vacío")
-    # Reemplazo básico para potencias antes de evaluar
+    
+    # --- Lógica de Multiplicación Implícita ---
+    # 1. Número seguido de Letra (ej: 2sin -> 2*sin, 3x -> 3*x, 3pi -> 3*pi)
+    txt = re.sub(r'(\d)\s*([a-zA-Z])', r'\1*\2', txt)
+    
+    # 2. Número seguido de Paréntesis (ej: 2(5) -> 2*(5))
+    txt = re.sub(r'(\d)\s*\(', r'\1*(', txt)
+    
+    # 3. Paréntesis seguido de Letra o Número (ej: )sin -> )*sin)
+    txt = re.sub(r'\)\s*([a-zA-Z0-9])', r')*\1', txt)
+    # ------------------------------------------
+
+    # Reemplazo básico para potencias
     txt = txt.replace("^", "**")
+    
     try:
         tree = ast.parse(txt, mode="eval")
     except: raise ValueError("Expresión inválida.")
@@ -112,12 +150,9 @@ def formatear_superindice(texto: str) -> str:
         texto_fmt = texto_fmt.replace("**", "^")
         texto_fmt = re.sub(r'\^([0-9-]+)', reemplazo, texto_fmt)
     
-    # 3. Limpieza de multiplicaciones explícitas visuales (opcional)
-    # texto_fmt = texto_fmt.replace("*", "·") 
-    
     return texto_fmt
 
-# --- Helpers de Álgebra Lineal y Formato (Sin cambios) ---
+# --- Helpers de Álgebra Lineal y Formato ---
 def is_close(a, b, tol=DEFAULT_EPS): return abs(a - b) < tol
 def zeros(m, n): return [[0.0]*n for _ in range(m)]
 def eye(n): 
