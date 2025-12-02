@@ -1,11 +1,11 @@
+# notacion_posicional.py
 from __future__ import annotations
-
+from utilidad import formatear_superindice
 
 def descomponer_base10(n: int) -> str:
     """
     Devuelve un texto que muestra la descomposición de un entero en base 10.
-    Ejemplo:
-        472 = 4×10^2 + 7×10^1 + 2×10^0
+    Ejemplo: 472 = 4×10² + 7×10¹ + 2×10⁰
     """
     n = int(n)
     if n < 0:
@@ -20,7 +20,9 @@ def descomponer_base10(n: int) -> str:
     partes = []
     for i, d in enumerate(digitos):
         exp = k - i - 1
-        partes.append(f"{d}×10^{exp}")
+        # Usamos formatear_superindice para convertir ^2 -> ²
+        parte_fmt = formatear_superindice(f"{d}×10^{exp}")
+        partes.append(parte_fmt)
 
     suma_potencias = " + ".join(partes)
     return (
@@ -29,12 +31,9 @@ def descomponer_base10(n: int) -> str:
         f"{signo}{n_abs} = {suma_potencias}"
     )
 
-
 def descomponer_base2(n: int) -> str:
     """
     Devuelve un texto que muestra la descomposición de un entero en base 2.
-    Ejemplo:
-        13 = (1101)_2 = 1×2^3 + 1×2^2 + 0×2^1 + 1×2^0
     """
     n = int(n)
     if n < 0:
@@ -49,12 +48,14 @@ def descomponer_base2(n: int) -> str:
     partes = []
     for i, bit in enumerate(bin_str):
         exp = k - i - 1
-        partes.append(f"{bit}×2^{exp}")
+        # Usamos formatear_superindice
+        parte_fmt = formatear_superindice(f"{bit}×2^{exp}")
+        partes.append(parte_fmt)
 
     suma_potencias = " + ".join(partes)
     return (
         f"Número en base 10: {signo}{n_abs}\n"
-        f"Representación binaria: {signo}{bin_str}_2\n"
+        f"Representación binaria: {signo}{bin_str}₂\n"
         f"Descomposición posicional:\n"
         f"{signo}{n_abs} = {suma_potencias}"
     )

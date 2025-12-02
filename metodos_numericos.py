@@ -1,10 +1,13 @@
+# metodos_numericos.py
 from __future__ import annotations
-
 import re
 from typing import Dict, Any, List, Optional
-
+import sympy as sp
 from utilidad import *
 
+# ======================================================
+#  1. Funciones auxiliares para parseo y funciones
+# ======================================================
 
 def _insertar_multiplicacion_implicita(expr: str) -> str:
     """
@@ -22,39 +25,48 @@ def _insertar_multiplicacion_implicita(expr: str) -> str:
 
 def _normalizar_expresion(expr: str) -> str:
     """
-    Normaliza la expresión de entrada:
-    - Reemplaza ^ por ** (potencias estilo Python)
-    - Inserta multiplicaciones explícitas (3x -> 3*x, x( -> x*()
-    - Quita espacios sobrantes
+    Normaliza la expresión de entrada básica.
     """
     expr = expr.replace("^", "**")
     expr = _insertar_multiplicacion_implicita(expr)
     return expr.strip()
 
-
-def _make_func(expr: str):
+def _make_func(expr_str: str):
     """
-    Construye una función f(x) a partir de la cadena ingresada.
-
-    1) Normaliza la expresión (x^3 - x - 1 -> x**3-x-1, 3x -> 3*x).
-    2) Cuando se llama f(x0), se reemplaza cada 'x' por (x0) y
-       se evalúa usando evaluar_expresion (sin usar argumento x=).
+    Construye una función f(x) usando sympy para soportar trigonométricas
+    y otras funciones complejas de forma segura y rápida.
     """
-    expr = _normalizar_expresion(str(expr))
+    expr_str = expr_str.replace("^", "**")
+    # Soporte básico para e^x -> exp(x) si el usuario lo escribe así
+    expr_str = re.sub(r'e\*\*(\w+)', r'exp(\1)', expr_str)
+    
+    try:
+        # Intentar parsear con sympy
+        x_sym = sp.Symbol('x')
+        # sympify convierte strings a expresiones sympy (soporta sin, cos, etc.)
+        expr = sp.sympify(expr_str)
+        # lambdify convierte la expresión sympy a una función python nativa (usando math)
+        f = sp.lambdify(x_sym, expr, modules=["math"])
+        return f
+    except Exception:
+        # Fallback al método anterior manual si sympy falla (raro)
+        def f_manual(x: float) -> float:
+            expr_num = expr_str.replace("x", f"({x})")
+            return float(evaluar_expresion(expr_num, exacto=False))
+        return f_manual
 
-    def f(x: float) -> float:
-        expr_num = expr.replace("x", f"({x})")
-        return float(evaluar_expresion(expr_num, exacto=False))
-
-    return f
-
-
-
-def _fmt(x: Optional[float]) -> str:
-    if x is None:
-        return "---"
-    return fmt_number(float(x), DEFAULT_DEC, False)
-
+def _parse_funcion_sympy(expr_str: str):
+    """
+    Retorna la función numérica y la expresión simbólica de Sympy.
+    Útil para métodos que requieren derivadas (Newton).
+    """
+    expr_str = expr_str.replace("^", "**")
+    expr_str = re.sub(r'e\*\*(\w+)', r'exp(\1)', expr_str) # e^x -> exp(x)
+    
+    x_sym = sp.Symbol('x')
+    expr = sp.sympify(expr_str)
+    f = sp.lambdify(x_sym, expr, modules=["math"])
+    return f, expr
 
 # ======================================================
 #  2. Métodos de raíces: Bisección y Regla Falsa
@@ -67,27 +79,16 @@ def biseccion_descriptiva(
     tolerancia: float,
     max_iter: int = 50,
 ) -> Dict[str, Any]:
-    """
-    Método de Bisección con salida detallada para la GUI.
-
-    Devuelve:
-      - metodo
-      - expresion
-      - intervalo_inicial
-      - tolerancia
-      - pasos  (lista de dicts con a, b, xr, f(xr), ea, er, er%)
-      - raiz_aproximada
-      - valor_funcion_en_raiz
-      - iteraciones_totales
-      - error_relativo_porcentual_final
-      - criterio_de_paro (tolerancia / max_iter / sin_iteraciones)
-    """
     f = _make_func(expresion)
     a = float(a_inicial)
     b = float(b_inicial)
     tol = float(tolerancia)
 
-    fa, fb = f(a), f(b)
+    try:
+        fa, fb = f(a), f(b)
+    except Exception as e:
+        raise ValueError(f"Error evaluando la función en los extremos: {e}")
+
     if fa * fb > 0:
         raise ValueError(
             "El intervalo no es válido. Se requiere f(a)·f(b) < 0 "
@@ -111,50 +112,39 @@ def biseccion_descriptiva(
             er = ea / abs(xr) if xr != 0 else None
             er_porcentual = er * 100.0 if er is not None else None
 
-        pasos.append(
-            {
-                "numero_de_iteracion": it,
-                "extremo_izquierdo_a": a,
-                "extremo_derecho_b": b,
-                "aproximacion_actual_xr": xr,
-                "valor_de_la_funcion_en_xr": fxr,
-                "error_absoluto_ea": ea,
-                "error_relativo": er,
-                "error_relativo_porcentual": er_porcentual,
-            }
-        )
+        pasos.append({
+            "numero_de_iteracion": it,
+            "extremo_izquierdo_a": a,
+            "extremo_derecho_b": b,
+            "aproximacion_actual_xr": xr,
+            "valor_de_la_funcion_en_xr": fxr,
+            "error_absoluto_ea": ea,
+            "error_relativo": er,
+            "error_relativo_porcentual": er_porcentual,
+        })
 
-        # criterio de paro por tolerancia (error absoluto entre aproximaciones)
         if ea is not None and ea < tol:
             break
 
-        # actualización de intervalo
         if fa * fxr < 0:
             b = xr
             fb = fxr
         else:
             a = xr
             fa = fxr
-
         xr_anterior = xr
 
-    # Resumen de iteraciones y error relativo porcentual final
+    # Resumen
     if pasos:
         ultimo_paso = pasos[-1]
         ea_final = ultimo_paso["error_absoluto_ea"]
         iteraciones_totales = len(pasos)
         error_relativo_porcentual_final = ultimo_paso["error_relativo_porcentual"]
-        if ea_final is not None and ea_final < tol:
-            criterio_de_paro = "tolerancia"
-        else:
-            criterio_de_paro = "max_iter"
+        criterio_de_paro = "tolerancia" if (ea_final is not None and ea_final < tol) else "max_iter"
     else:
         iteraciones_totales = 0
         error_relativo_porcentual_final = None
         criterio_de_paro = "sin_iteraciones"
-
-    raiz = xr
-    valor_en_raiz = f(raiz)
 
     return {
         "metodo": "Bisección",
@@ -162,13 +152,12 @@ def biseccion_descriptiva(
         "intervalo_inicial": (a_inicial, b_inicial),
         "tolerancia": tolerancia,
         "pasos": pasos,
-        "raiz_aproximada": raiz,
-        "valor_funcion_en_raiz": valor_en_raiz,
+        "raiz_aproximada": xr,
+        "valor_funcion_en_raiz": f(xr),
         "iteraciones_totales": iteraciones_totales,
         "error_relativo_porcentual_final": error_relativo_porcentual_final,
         "criterio_de_paro": criterio_de_paro,
     }
-
 
 def regla_falsa_descriptiva(
     expresion: str,
@@ -177,21 +166,19 @@ def regla_falsa_descriptiva(
     tolerancia: float,
     max_iter: int = 50,
 ) -> Dict[str, Any]:
-    """
-    Método de Regla Falsa (falsa posición) con salida detallada.
-
-    Misma estructura de salida que biseccion_descriptiva.
-    """
     f = _make_func(expresion)
     a = float(a_inicial)
     b = float(b_inicial)
     tol = float(tolerancia)
 
-    fa, fb = f(a), f(b)
+    try:
+        fa, fb = f(a), f(b)
+    except Exception as e:
+        raise ValueError(f"Error evaluando la función: {e}")
+
     if fa * fb > 0:
         raise ValueError(
-            "El intervalo no es válido. Se requiere f(a)·f(b) < 0 "
-            "(la función debe cambiar de signo en [a,b])."
+            "El intervalo no es válido. Se requiere f(a)·f(b) < 0."
         )
 
     pasos: List[Dict[str, Any]] = []
@@ -199,8 +186,10 @@ def regla_falsa_descriptiva(
     xr: float = b
 
     for it in range(1, max_iter + 1):
-        # fórmula de regla falsa (punto de intersección con el eje x)
-        xr = b - fb * (b - a) / (fb - fa)
+        # fórmula de regla falsa
+        denom = (fb - fa)
+        if denom == 0: break # Evitar división por cero
+        xr = b - fb * (b - a) / denom
         fxr = f(xr)
 
         if xr_anterior is None:
@@ -212,18 +201,16 @@ def regla_falsa_descriptiva(
             er = ea / abs(xr) if xr != 0 else None
             er_porcentual = er * 100.0 if er is not None else None
 
-        pasos.append(
-            {
-                "numero_de_iteracion": it,
-                "extremo_izquierdo_a": a,
-                "extremo_derecho_b": b,
-                "aproximacion_actual_xr": xr,
-                "valor_de_la_funcion_en_xr": fxr,
-                "error_absoluto_ea": ea,
-                "error_relativo": er,
-                "error_relativo_porcentual": er_porcentual,
-            }
-        )
+        pasos.append({
+            "numero_de_iteracion": it,
+            "extremo_izquierdo_a": a,
+            "extremo_derecho_b": b,
+            "aproximacion_actual_xr": xr,
+            "valor_de_la_funcion_en_xr": fxr,
+            "error_absoluto_ea": ea,
+            "error_relativo": er,
+            "error_relativo_porcentual": er_porcentual,
+        })
 
         if ea is not None and ea < tol:
             break
@@ -234,26 +221,18 @@ def regla_falsa_descriptiva(
         else:
             a = xr
             fa = fxr
-
         xr_anterior = xr
 
-    # Resumen de iteraciones y error relativo porcentual final
     if pasos:
         ultimo_paso = pasos[-1]
         ea_final = ultimo_paso["error_absoluto_ea"]
         iteraciones_totales = len(pasos)
         error_relativo_porcentual_final = ultimo_paso["error_relativo_porcentual"]
-        if ea_final is not None and ea_final < tol:
-            criterio_de_paro = "tolerancia"
-        else:
-            criterio_de_paro = "max_iter"
+        criterio_de_paro = "tolerancia" if (ea_final is not None and ea_final < tol) else "max_iter"
     else:
         iteraciones_totales = 0
         error_relativo_porcentual_final = None
         criterio_de_paro = "sin_iteraciones"
-
-    raiz = xr
-    valor_en_raiz = f(raiz)
 
     return {
         "metodo": "Regla falsa",
@@ -261,181 +240,153 @@ def regla_falsa_descriptiva(
         "intervalo_inicial": (a_inicial, b_inicial),
         "tolerancia": tolerancia,
         "pasos": pasos,
-        "raiz_aproximada": raiz,
-        "valor_funcion_en_raiz": valor_en_raiz,
+        "raiz_aproximada": xr,
+        "valor_funcion_en_raiz": f(xr),
         "iteraciones_totales": iteraciones_totales,
         "error_relativo_porcentual_final": error_relativo_porcentual_final,
         "criterio_de_paro": criterio_de_paro,
     }
 
-
-# Funciones envoltorio para cumplir con la especificación del programa
-# Permiten invocar simplemente biseccion(...) y regla_falsa(...)
-# usando la misma lógica implementada en las versiones descriptivas.
-
-def biseccion(
-    expresion: str,
-    a_inicial: float,
-    b_inicial: float,
-    tolerancia: float,
-    max_iter: int = 50,
-) -> Dict[str, Any]:
-    """
-    Método de Bisección básico.
-    Envoltorio sobre biseccion_descriptiva para facilitar su uso
-    fuera de la interfaz gráfica.
-    """
-    return biseccion_descriptiva(expresion, a_inicial, b_inicial, tolerancia, max_iter)
-
-
-def regla_falsa(
-    expresion: str,
-    a_inicial: float,
-    b_inicial: float,
-    tolerancia: float,
-    max_iter: int = 50,
-) -> Dict[str, Any]:
-    """
-    Método de Regla Falsa básico.
-    Envoltorio sobre regla_falsa_descriptiva para facilitar su uso
-    fuera de la interfaz gráfica.
-    """
-    return regla_falsa_descriptiva(expresion, a_inicial, b_inicial, tolerancia, max_iter)
-
-
 # ======================================================
-#  3. Cálculo de errores (ejercicio principal)
+#  3. Métodos Abiertos: Newton y Secante
 # ======================================================
 
-def calcular_errores(valor_real: float, valor_aproximado: float) -> Dict[str, Any]:
-    """
-    Calcula error absoluto, relativo y relativo porcentual.
-    """
-    m = float(valor_real)
-    x = float(valor_aproximado)
-    ea = abs(m - x)
-    er = ea / abs(m) if m != 0 else None
-    er_porcentual = er * 100.0 if er is not None else None
+def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: int) -> Dict[str, Any]:
+    f, expr_sym = _parse_funcion_sympy(expr_str)
+    x_sym = sp.Symbol('x')
+    df_expr = sp.diff(expr_sym, x_sym)
+    df = sp.lambdify(x_sym, df_expr, modules=["math"])
+
+    pasos = []
+    xr_anterior = None
+    xr = float(x0)
+    criterio = "max_iter"
+    ea = None
+
+    # String de la derivada para el reporte
+    df_str = str(df_expr).replace("**", "^")
+
+    for it in range(1, max_iter + 1):
+        try:
+            fx = f(xr)
+            dfx = df(xr)
+        except Exception:
+            criterio = "error_matematico"
+            break
+
+        if dfx == 0:
+            criterio = "derivada_cero"
+            break
+
+        xr_nuevo = xr - fx / dfx
+
+        if xr_anterior is None:
+            ea = None
+            er = None
+            erp = None
+        else:
+            ea = abs(xr_nuevo - xr)
+            er = ea / abs(xr_nuevo) if xr_nuevo != 0 else None
+            erp = er * 100 if er is not None else None
+
+        pasos.append({
+            "numero_de_iteracion": it,
+            "xi": xr,
+            "f_xi": fx,
+            "df_xi": dfx,
+            "xi_nuevo": xr_nuevo,
+            "error_absoluto_ea": ea,
+            "error_relativo": er,
+            "error_relativo_porcentual": erp,
+        })
+
+        if ea is not None and ea <= tol:
+            criterio = "tolerancia"
+            xr = xr_nuevo
+            break
+
+        xr_anterior = xr
+        xr = xr_nuevo
+
     return {
-        "valor_real": m,
-        "valor_aproximado": x,
-        "error_absoluto": ea,
-        "error_relativo": er,
-        "error_relativo_porcentual": er_porcentual,
+        "metodo": "Newton-Raphson",
+        "expresion": expr_str,
+        "derivada_str": df_str,
+        "raiz_aproximada": xr,
+        "valor_funcion_en_raiz": f(xr),
+        "iteraciones_totales": len(pasos),
+        "criterio_de_paro": criterio,
+        "pasos": pasos,
     }
 
+def secante_descriptiva(expr_str: str, x0: float, x1: float, tol: float, max_iter: int) -> Dict[str, Any]:
+    f = _make_func(expr_str)
+    pasos = []
+    xr_ant = float(x0)
+    xr = float(x1)
+    criterio = "max_iter"
+
+    for it in range(1, max_iter + 1):
+        try:
+            f_xr = f(xr)
+            f_xr_ant = f(xr_ant)
+        except Exception:
+            criterio = "error_matematico"
+            break
+
+        denominador = (f_xr - f_xr_ant)
+        
+        if denominador == 0:
+            criterio = "denominador_cero"
+            break 
+
+        xr_nuevo = xr - f_xr * (xr - xr_ant) / denominador
+        ea = abs(xr_nuevo - xr)
+        er = ea / abs(xr_nuevo) if xr_nuevo != 0 else None
+        erp = er * 100 if er is not None else None
+
+        pasos.append({
+            "numero_de_iteracion": it,
+            "xi_ant": xr_ant,
+            "xi": xr,
+            "f_xi_ant": f_xr_ant,
+            "f_xi": f_xr,
+            "xi_nuevo": xr_nuevo,
+            "error_absoluto_ea": ea,
+            "error_relativo": er,
+            "error_relativo_porcentual": erp,
+        })
+
+        if ea <= tol:
+            criterio = "tolerancia"
+            xr = xr_nuevo
+            break
+
+        xr_ant = xr
+        xr = xr_nuevo
+
+    return {
+        "metodo": "Secante",
+        "expresion": expr_str,
+        "raiz_aproximada": xr,
+        "valor_funcion_en_raiz": f(xr),
+        "iteraciones_totales": len(pasos),
+        "criterio_de_paro": criterio,
+        "pasos": pasos,
+    }
 
 # ======================================================
-#  4. Texto de tipos de error (para el documento)
+#  4. Generadores de Reportes (con formato bonito)
 # ======================================================
-
-def tipos_de_error_texto() -> str:
-    """
-    Devuelve una explicación en texto de los principales tipos de error
-    que pide la guía del Programa 8.
-    """
-    return (
-        "Tipos de error en métodos numéricos:\n"
-        "1) Error inherente:\n"
-        "   Diferencia entre el valor real de una magnitud y el valor que\n"
-        "   se toma como 'verdadero' en el modelo. A veces el dato de entrada\n"
-        "   ya viene con error (por ejemplo, una medición experimental).\n\n"
-        "2) Error de redondeo:\n"
-        "   Se produce al limitar la cantidad de dígitos significativos que\n"
-        "   se almacenan o muestran. Ejemplo: representar π como 3.14.\n\n"
-        "3) Error de truncamiento:\n"
-        "   Aparece cuando se reemplaza un proceso infinito (una serie, una\n"
-        "   integral, una derivada exacta) por una versión finita o una\n"
-        "   aproximación. Ejemplo: cortar una serie de Taylor después de\n"
-        "   pocos términos.\n\n"
-        "4) Overflow y underflow:\n"
-        "   Overflow: el resultado es tan grande que sobrepasa el máximo que\n"
-        "   puede representar el tipo de dato (por ejemplo, 1e308 en doble\n"
-        "   precisión). Underflow: el número es tan pequeño que se aproxima a\n"
-        "   cero y se pierde precisión.\n\n"
-        "5) Error del modelo matemático:\n"
-        "   Ocurre cuando el modelo que usamos para describir un fenómeno no\n"
-        "   coincide exactamente con la realidad. Aunque resolvamos el modelo\n"
-        "   de forma 'perfecta', la solución puede no representar bien al\n"
-        "   sistema real.\n"
-    )
-
-
-# ======================================================
-#  5. Ejemplo de punto flotante (0.1 + 0.2)
-# ======================================================
-
-def ejemplo_punto_flotante_texto() -> str:
-    """
-    Ejemplo obligatorio: 0.1 + 0.2. Explica por qué no es exacto.
-    """
-    return (
-        "Ejemplo de punto flotante:\n"
-        "En Python podemos ejecutar:\n"
-        "    print(0.1 + 0.2)\n"
-        "El resultado suele ser 0.30000000000000004 y NO 0.3 exacto.\n\n"
-        "Esto ocurre porque 0.1 y 0.2 no tienen representación finita en\n"
-        "base 2. La computadora almacena aproximaciones binarias de estos\n"
-        "números y, al sumarlas, aparece el error de redondeo acumulado.\n"
-        "Por eso, los números reales no siempre se representan exactamente\n"
-        "en la máquina.\n"
-    )
-
-
-# ======================================================
-#  6. Propagación del error en y = f(x)
-# ======================================================
-
-def propagacion_error(
-    expresion: str,
-    x0: float,
-    delta_x: float,
-) -> Dict[str, Any]:
-    """
-    Estima la propagación del error de x hacia y = f(x) usando la idea de
-    derivada aproximada:
-
-        Δy ≈ f(x0 + Δx) − f(x0)
-
-    sin usar NumPy ni SciPy.
-    """
-    try:
-        f = _make_func(expresion)
-        x0 = float(x0)
-        dx = float(delta_x)
-
-        y0 = f(x0)
-        y1 = f(x0 + dx)
-        dy = y1 - y0
-
-        ea_y = abs(dy)
-        er_y = ea_y / abs(y0) if y0 != 0 else None
-        erp_y = er_y * 100.0 if er_y is not None else None
-
-        return {
-            "x0": x0,
-            "delta_x": dx,
-            "y0": y0,
-            "y1": y1,
-            "delta_y": dy,
-            "error_absoluto_y": ea_y,
-            "error_relativo_y": er_y,
-            "error_relativo_porcentual_y": erp_y,
-        }
-    except Exception:
-        # Si algo falla al evaluar la función, lanzamos un error claro
-        raise ValueError("No se pudo calcular la propagación del error. Verifique f(x), x0 y Δx.")
 
 def generar_reporte_paso_a_paso(info: Dict[str, Any]) -> str:
-    """
-    Genera un reporte textual detallado imitando el estilo de pizarra/diapositiva
-    basado en los pasos calculados previamente.
-    """
+    """Genera reporte para Bisección y Regla Falsa."""
     pasos = info.get("pasos", [])
     expr_original = info.get("expresion", "f(x)")
     metodo = info.get("metodo", "")
     
-    expr_visual = expr_original.replace("**", "^")
+    # FORMATO VISUAL MEJORADO (superíndices)
+    expr_visual = formatear_superindice(expr_original)
 
     txt = []
     txt.append(f"=== REPORTE DETALLADO: {metodo.upper()} ===\n")
@@ -455,45 +406,162 @@ def generar_reporte_paso_a_paso(info: Dict[str, Any]) -> str:
         s_xr = fmt_number(xr, 5)
         s_ea = fmt_number(ea, 5) if ea is not None else "---"
         
+        # Sustitución visual (aproximada para referencia)
         sub_xl = expr_visual.replace("x", f"({s_xl})")
         sub_xu = expr_visual.replace("x", f"({s_xu})")
         sub_xr = expr_visual.replace("x", f"({s_xr})")
         
         txt.append(f"\nITERACIÓN {it}:")
         txt.append(f"--------------------------------------------------")
-        
         txt.append(f"   xi = {s_xl}      xu = {s_xu}")
         
         if "Bisección" in metodo:
             txt.append(f"   xr = (xi + xu) / 2  -->  xr = ({s_xl} + {s_xu}) / 2 = {s_xr}")
-        else: # Regla Falsa
-
+        else: 
             txt.append(f"   xr (Falsa Posición) = {s_xr}")
 
         txt.append(f"   Ea = {s_ea}\n")
 
-        func_eval = _make_func(expr_original)
-        v_i = func_eval(xl)
-        v_u = func_eval(xu)
-        v_r = fxr # Este ya viene calculado
+        # Recalcular valores para mostrar en el log visual
+        f = _make_func(expr_original)
+        try:
+            v_i, v_u = f(xl), f(xu)
+            v_r = fxr 
 
-        txt.append(f"   vi = f(xi) = f({s_xl}) = {sub_xl} = {fmt_number(v_i, 5)}")
-        txt.append(f"   vu = f(xu) = f({s_xu}) = {sub_xu} = {fmt_number(v_u, 5)}")
-        txt.append(f"   vr = f(xr) = f({s_xr}) = {sub_xr} = {fmt_number(v_r, 5)}\n")
+            txt.append(f"   f(xi) = {fmt_number(v_i, 5)}")
+            txt.append(f"   f(xu) = {fmt_number(v_u, 5)}")
+            txt.append(f"   f(xr) = {fmt_number(v_r, 5)}\n")
 
-        # 4. Lógica de cambio de signo
-        signo_vi = "(+)" if v_i >= 0 else "(-)"
-        signo_vr = "(+)" if v_r >= 0 else "(-)"
-        
-        txt.append(f"   Verificación de signos: f(xi) * f(xr)")
-        txt.append(f"   -> {fmt_number(v_i, 5)} * {fmt_number(v_r, 5)}")
-        txt.append(f"   -> {signo_vi} * {signo_vr} {'<' if v_i*v_r < 0 else '>'} 0")
-        
-        if v_i * v_r < 0:
-            txt.append(f"   >>> La raíz está entre [xi, xr] -> [{s_xl}, {s_xr}]")
-        else:
-            txt.append(f"   >>> La raíz está entre [xr, xu] -> [{s_xr}, {s_xu}]")
+            signo_vi = "(+)" if v_i >= 0 else "(-)"
+            signo_vr = "(+)" if v_r >= 0 else "(-)"
+            
+            txt.append(f"   Verificación de signos: f(xi) * f(xr)")
+            txt.append(f"   -> {signo_vi} * {signo_vr} {'<' if v_i*v_r < 0 else '>'} 0")
+            
+            if v_i * v_r < 0:
+                txt.append(f"   >>> La raíz está entre [xi, xr] -> [{s_xl}, {s_xr}]")
+            else:
+                txt.append(f"   >>> La raíz está entre [xr, xu] -> [{s_xr}, {s_xu}]")
+        except:
+            txt.append("   (Error evaluando función para detalles de signos)")
         
         txt.append("\n")
 
     return "\n".join(txt)
+
+def generar_reporte_abierto(info: dict) -> str:
+    """Genera reporte para Newton y Secante."""
+    metodo = info["metodo"]
+    # FORMATO VISUAL MEJORADO
+    expr_visual = formatear_superindice(info["expresion"])
+    pasos = info["pasos"]
+    
+    lines = []
+    lines.append(f"=== REPORTE DETALLADO: {metodo.upper()} ===")
+    lines.append(f"Función: f(x) = {expr_visual}")
+    
+    if metodo == "Newton-Raphson":
+        # Formatear la derivada también
+        derivada_vis = formatear_superindice(info['derivada_str'])
+        lines.append(f"Derivada analítica: f'(x) = {derivada_vis}")
+        lines.append("-" * 60)
+        
+        for p in pasos:
+            i = p["numero_de_iteracion"]
+            xi = p["xi"]
+            f_xi, df_xi = p["f_xi"], p["df_xi"]
+            res, ea = p["xi_nuevo"], p["error_absoluto_ea"]
+            
+            s_xi = fmt_number(xi, 6)
+            s_f = fmt_number(f_xi, 6)
+            s_df = fmt_number(df_xi, 6)
+            s_res = fmt_number(res, 6)
+            s_ea = fmt_number(ea, 7) if ea is not None else "---"
+            
+            lines.append(f"\nIteración {i} (desde x{i-1} = {s_xi}):")
+            lines.append(f"   1. Evaluaciones:")
+            lines.append(f"      f({s_xi}) = {s_f}")
+            lines.append(f"      f'({s_xi}) = {s_df}")
+            lines.append(f"   2. Sustituir en fórmula de Newton:")
+            lines.append(f"      x{i} = {s_xi} - ({s_f}) / ({s_df})")
+            lines.append(f"         ≈ {s_res}")
+            
+            if ea is not None:
+                lines.append(f"   3. Error aproximado: Ea = |{s_res} - {s_xi}| ≈ {s_ea}")
+            lines.append("-" * 40)
+
+    elif metodo == "Secante":
+        lines.append("-" * 60)
+        for p in pasos:
+            i = p["numero_de_iteracion"]
+            xi_ant, xi = p["xi_ant"], p["xi"]
+            fi_ant, fi = p["f_xi_ant"], p["f_xi"]
+            res, ea = p["xi_nuevo"], p["error_absoluto_ea"]
+            
+            s_xia, s_xi = fmt_number(xi_ant, 6), fmt_number(xi, 6)
+            s_fa, s_fi = fmt_number(fi_ant, 6), fmt_number(fi, 6)
+            s_res = fmt_number(res, 6)
+            s_ea  = fmt_number(ea, 7) if ea is not None else "---"
+            
+            lines.append(f"\nIteración {i} (usar x{i-2}={s_xia}, x{i-1}={s_xi}):")
+            lines.append(f"   1. Evaluaciones: f({s_xia}) ≈ {s_fa}, f({s_xi}) ≈ {s_fi}")
+            lines.append(f"   2. Fórmula de la secante:")
+            lines.append(f"      x{i} = {s_xi} - [ ({s_fi}) * ({s_xi} - {s_xia}) / ({s_fi} - {s_fa}) ]")
+            lines.append(f"         ≈ {s_res}")
+            
+            if ea is not None:
+                lines.append(f"   Error aproximado: Ea = |{s_res} - {s_xi}| ≈ {s_ea}")
+            lines.append("-" * 40)
+            
+    return "\n".join(lines)
+
+# Envoltorios para compatibilidad
+def biseccion(expr, a, b, tol, mx=50):
+    return biseccion_descriptiva(expr, a, b, tol, mx)
+
+def regla_falsa(expr, a, b, tol, mx=50):
+    return regla_falsa_descriptiva(expr, a, b, tol, mx)
+
+# ======================================================
+#  Otros Cálculos (Errores, etc.) - Sin cambios lógicos
+# ======================================================
+def calcular_errores(valor_real: float, valor_aproximado: float) -> Dict[str, Any]:
+    m, x = float(valor_real), float(valor_aproximado)
+    ea = abs(m - x)
+    er = ea / abs(m) if m != 0 else None
+    return {
+        "valor_real": m, "valor_aproximado": x,
+        "error_absoluto": ea, "error_relativo": er,
+        "error_relativo_porcentual": er * 100.0 if er is not None else None,
+    }
+
+def tipos_de_error_texto() -> str:
+    return (
+        "Tipos de error en métodos numéricos:\n"
+        "1) Error inherente: Datos de entrada inexactos.\n"
+        "2) Error de redondeo: Limitación de dígitos significativos.\n"
+        "3) Error de truncamiento: Aproximar procesos infinitos.\n"
+        "4) Overflow/Underflow: Números demasiado grandes o pequeños.\n"
+        "5) Error del modelo: El modelo matemático no es perfecto."
+    )
+
+def ejemplo_punto_flotante_texto() -> str:
+    return (
+        "Ejemplo de punto flotante:\n"
+        "    0.1 + 0.2 = 0.30000000000000004\n"
+        "Esto ocurre por la representación binaria inexacta de 0.1 y 0.2."
+    )
+
+def propagacion_error(expresion: str, x0: float, delta_x: float) -> Dict[str, Any]:
+    f = _make_func(expresion)
+    x0, dx = float(x0), float(delta_x)
+    y0 = f(x0)
+    y1 = f(x0 + dx)
+    dy = y1 - y0
+    ea = abs(dy)
+    return {
+        "x0": x0, "delta_x": dx, "y0": y0, "y1": y1, "delta_y": dy,
+        "error_absoluto_y": ea,
+        "error_relativo_y": ea / abs(y0) if y0 != 0 else None,
+        "error_relativo_porcentual_y": (ea / abs(y0) * 100) if y0 != 0 else None,
+    }

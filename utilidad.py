@@ -4,13 +4,14 @@ from typing import List, Tuple
 import ast
 import operator as op
 from fractions import Fraction
-import math  # <--- AGREGADO: Necesario para funciones matemáticas
+import math
+import re
 
 # -------------------------
 #  Constantes globales
 # -------------------------
 DEFAULT_EPS: float = 1e-10
-DEFAULT_DEC: int = 2
+DEFAULT_DEC: int = 4
 
 # -------------------------
 #  Evaluador seguro (MEJORADO)
@@ -19,10 +20,16 @@ _OPS = {
     ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul, ast.Div: op.truediv,
     ast.Pow: op.pow, ast.USub: op.neg, ast.UAdd: lambda x: x
 }
-# Funciones permitidas
+
+# Diccionario ampliado con trigonométricas y otras funciones de math
 _FUNCS = {
-    'sin': math.sin, 'cos': math.cos, 'tan': math.tan, 
-    'exp': math.exp, 'log': math.log, 'sqrt': math.sqrt, 'abs': abs
+    'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
+    'asin': math.asin, 'acos': math.acos, 'atan': math.atan,
+    'arcsin': math.asin, 'arccos': math.acos, 'arctan': math.atan,
+    'sinh': math.sinh, 'cosh': math.cosh, 'tanh': math.tanh,
+    'exp': math.exp, 'log': math.log, 'log10': math.log10, 'ln': math.log,
+    'sqrt': math.sqrt, 'abs': abs,
+    'rad': math.radians, 'deg': math.degrees
 }
 
 _ALLOWED_NODES = (
@@ -69,6 +76,7 @@ def _eval_node(node):
 def evaluar_expresion(txt: str, exacto: bool = False):
     txt = str(txt).strip()
     if not txt: raise ValueError("Vacío")
+    # Reemplazo básico para potencias antes de evaluar
     txt = txt.replace("^", "**")
     try:
         tree = ast.parse(txt, mode="eval")
@@ -81,7 +89,35 @@ def evaluar_expresion(txt: str, exacto: bool = False):
         except: pass
     return float(val)
 
-# --- FUNCIONES ORIGINALES (Se mantienen igual) ---
+# -------------------------
+#  Función de formato visual (Superíndices)
+# -------------------------
+def formatear_superindice(texto: str) -> str:
+    """
+    Convierte notación como 'x^2', '10^-3' en superíndices visuales 'x²', '10⁻³'.
+    """
+    # Mapa de caracteres normales a superíndices
+    mapa_super = str.maketrans("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻")
+    
+    def reemplazo(match):
+        # El grupo 1 es el número (con o sin signo menos)
+        exponente = match.group(1)
+        return exponente.translate(mapa_super)
+
+    # 1. Reemplazar patrón ^numero (ej: ^2, ^-1)
+    texto_fmt = re.sub(r'\^([0-9-]+)', reemplazo, str(texto))
+    
+    # 2. Limpieza: si venía como python x**2, convertirlo visualmente a x^2 y luego aplicar
+    if "**" in texto_fmt:
+        texto_fmt = texto_fmt.replace("**", "^")
+        texto_fmt = re.sub(r'\^([0-9-]+)', reemplazo, texto_fmt)
+    
+    # 3. Limpieza de multiplicaciones explícitas visuales (opcional)
+    # texto_fmt = texto_fmt.replace("*", "·") 
+    
+    return texto_fmt
+
+# --- Helpers de Álgebra Lineal y Formato (Sin cambios) ---
 def is_close(a, b, tol=DEFAULT_EPS): return abs(a - b) < tol
 def zeros(m, n): return [[0.0]*n for _ in range(m)]
 def eye(n): 
@@ -97,7 +133,7 @@ def mat_from_columns(cols): return [[col[i] for col in cols] for i in range(len(
 def dot_mat_vec(A, v): return [sum(A[i][j]*v[j] for j in range(len(v))) for i in range(len(A))]
 def formatear_matriz(M, dec=2): return "\n".join([" ".join(f"{x:.{dec}f}" for x in row) for row in M]) if M else "[]"
 
-# Formato
+# Formato numérico
 def _fmt_num(x, dec=DEFAULT_DEC): return f"{int(x)}" if float(x).is_integer() else f"{x:.{dec}f}"
 def format_matrix(A, dec=DEFAULT_DEC, sep=" "): return "\n".join(sep.join(_fmt_num(x, dec) for x in r) for r in A)
 def format_matrix_bracket(A, dec=DEFAULT_DEC): return "\n".join(f"[ {' '.join(_fmt_num(x, dec) for x in r)} ]" for r in A)
@@ -105,7 +141,7 @@ def format_vector(v, dec=DEFAULT_DEC, sep=" "): return sep.join(_fmt_num(x, dec)
 def format_col_vector(v, dec=DEFAULT_DEC): return "\n".join(f"[{_fmt_num(x, dec)}]" for x in v)
 def fmt_number(x, dec=DEFAULT_DEC, as_fraction=False): return _fmt_num(x, dec)
 
-# CLI
+# CLI Helpers
 def _split_nums(s): return [evaluar_expresion(p, False) for p in s.replace("|", " ").replace(",", " ").split()]
 def leer_vector(n, msg="Vector: "): return _split_nums(input(msg))
 def leer_matriz(m, n, t=""): return [leer_vector(n) for _ in range(m)]
