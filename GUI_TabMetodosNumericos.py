@@ -1,19 +1,27 @@
-
+# GUI_TabMetodosNumericos.py
 from __future__ import annotations
 from PyQt6 import QtWidgets, QtCore, QtGui
 
 import math
+import numpy as np
 import sympy as sp
+import matplotlib.pyplot as plt
+# --- Importaciones para Matplotlib (Gráficos) ---
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+from matplotlib.figure import Figure
 
 from widgets import LabeledEdit, OutputArea, btn
 from metodos_numericos import (
     biseccion_descriptiva,
     regla_falsa_descriptiva,
+    newton_raphson_descriptiva,
+    secante_descriptiva,
+    generar_reporte_paso_a_paso,  # Para métodos cerrados
+    generar_reporte_abierto,      # Para Newton y Secante
     calcular_errores,
     tipos_de_error_texto,
     ejemplo_punto_flotante_texto,
-    propagacion_error,
-    generar_reporte_paso_a_paso  # Para métodos cerrados
+    propagacion_error
 )
 from notacion_posicional import descomponer_base10, descomponer_base2
 from utilidad import fmt_number, DEFAULT_DEC
@@ -21,233 +29,185 @@ from utilidad import fmt_number, DEFAULT_DEC
 # Símbolo global para Sympy
 x = sp.symbols("x")
 
-
 # ==================================================
-# Funciones internas para Newton y Secante (MODIFICADAS)
+# 1. Clase para la Ventana del Gráfico
 # ==================================================
-def _parse_funcion(expr_str: str):
+class VentanaGrafica(QtWidgets.QDialog):
     """
-    Convierte un string como 'x^3 - x - 1' en una función numérica f(x)
-    y la expresión simbólica de Sympy.
+    Ventana emergente con estilo profesional para gráficas matemáticas.
     """
-    expr_str = expr_str.replace("^", "**")
-    # Manejo básico de e^x para sympy
-    expr_str = expr_str.replace("e^", "exp") 
-    expr = sp.sympify(expr_str)
-    f = sp.lambdify(x, expr, modules=["math"])
-    return f, expr
-
-
-def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: int):
-    """
-    Método de Newton–Raphson con datos extra para el reporte detallado.
-    """
-    f, expr = _parse_funcion(expr_str)
-    df_expr = sp.diff(expr, x)
-    df = sp.lambdify(x, df_expr, modules=["math"])
-
-    pasos = []
-    xr_anterior = None
-    xr = float(x0)
-    criterio = "max_iter"
-    ea = None
-
-    # Guardamos la derivada como string para el reporte
-    df_str = str(df_expr).replace("**", "^")
-
-    for it in range(1, max_iter + 1):
-        fx = f(xr)
-        dfx = df(xr)
-
-        if dfx == 0:
-            criterio = "derivada_cero"
-            break
-
-        xr_nuevo = xr - fx / dfx
-
-        if xr_anterior is None:
-            ea = None
-            er = None
-            erp = None
-        else:
-            ea = abs(xr_nuevo - xr)
-            er = ea / abs(xr_nuevo) if xr_nuevo != 0 else None
-            erp = er * 100 if er is not None else None
-
-        pasos.append({
-            "numero_de_iteracion": it,
-            "xi": xr,                 # Valor actual
-            "f_xi": fx,               # f(xi)
-            "df_xi": dfx,             # f'(xi)
-            "xi_nuevo": xr_nuevo,     # El resultado de la fórmula
-            "error_absoluto_ea": ea,
-            "error_relativo": er,
-            "error_relativo_porcentual": erp,
-        })
-
-        if ea is not None and ea <= tol:
-            criterio = "tolerancia"
-            xr = xr_nuevo
-            break
-
-        xr_anterior = xr
-        xr = xr_nuevo
-
-    raiz = xr
-    valor_en_raiz = f(raiz)
-
-    info = {
-        "metodo": "Newton-Raphson",
-        "expresion": expr_str,
-        "derivada_str": df_str,
-        "raiz_aproximada": raiz,
-        "valor_funcion_en_raiz": valor_en_raiz,
-        "iteraciones_totales": len(pasos),
-        "criterio_de_paro": criterio,
-        "pasos": pasos,
-    }
-    return info
-
-
-def secante_descriptiva(expr_str: str, x0: float, x1: float, tol: float, max_iter: int):
-    """
-    Método de la Secante con datos extra para el reporte detallado.
-    """
-    f, _ = _parse_funcion(expr_str)
-
-    pasos = []
-    xr_ant = float(x0) # x_{i-1}
-    xr = float(x1)     # x_i
-    criterio = "max_iter"
-
-    for it in range(1, max_iter + 1):
-        f_xr = f(xr)
-        f_xr_ant = f(xr_ant)
-
-        denominador = (f_xr - f_xr_ant)
-        if denominador == 0:
-            criterio = "denominador_cero"
-            break 
-
-        xr_nuevo = xr - f_xr * (xr - xr_ant) / denominador
-
-        ea = abs(xr_nuevo - xr)
-        er = ea / abs(xr_nuevo) if xr_nuevo != 0 else None
-        erp = er * 100 if er is not None else None
-
-        pasos.append({
-            "numero_de_iteracion": it,
-            "xi_ant": xr_ant,         # x_{i-1}
-            "xi": xr,                 # x_i
-            "f_xi_ant": f_xr_ant,     # f(x_{i-1})
-            "f_xi": f_xr,             # f(x_i)
-            "xi_nuevo": xr_nuevo,     # Resultado
-            "error_absoluto_ea": ea,
-            "error_relativo": er,
-            "error_relativo_porcentual": erp,
-        })
-
-        if ea <= tol:
-            criterio = "tolerancia"
-            xr = xr_nuevo
-            break
-
-        xr_ant = xr
-        xr = xr_nuevo
-
-    raiz = xr
-    valor_en_raiz = f(raiz)
-
-    info = {
-        "metodo": "Secante",
-        "expresion": expr_str,
-        "raiz_aproximada": raiz,
-        "valor_funcion_en_raiz": valor_en_raiz,
-        "iteraciones_totales": len(pasos),
-        "criterio_de_paro": criterio,
-        "pasos": pasos,
-    }
-    return info
-
-# ==================================================
-# Generador de reporte para métodos abiertos
-# ==================================================
-def generar_reporte_abierto(info: dict) -> str:
-    """Genera el texto paso a paso para Newton y Secante."""
-    metodo = info["metodo"]
-    expr_visual = info["expresion"].replace("**", "^")
-    pasos = info["pasos"]
-    
-    lines = []
-    lines.append(f"=== REPORTE DETALLADO: {metodo.upper()} ===")
-    lines.append(f"Función: f(x) = {expr_visual}")
-    
-    if metodo == "Newton-Raphson":
-        lines.append(f"Derivada analítica: f'(x) = {info['derivada_str']}")
-        lines.append("-" * 60)
+    def __init__(self, expresion_str, x_range, puntos_interes=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Análisis Gráfico: {expresion_str}")
+        self.resize(900, 650)
         
-        for p in pasos:
-            i = p["numero_de_iteracion"]
-            xi = p["xi"]
-            f_xi = p["f_xi"]
-            df_xi = p["df_xi"]
-            res = p["xi_nuevo"]
-            ea = p["error_absoluto_ea"]
-            
-            s_xi = fmt_number(xi, 6)
-            s_f = fmt_number(f_xi, 6)
-            s_df = fmt_number(df_xi, 6)
-            s_res = fmt_number(res, 6)
-            s_ea = fmt_number(ea, 7) if ea is not None else "---"
-            
-            lines.append(f"\nIteración {i} (desde x{i-1} = {s_xi}):")
-            lines.append(f"   1. Evaluaciones:")
-            lines.append(f"      f({s_xi}) = {s_f}")
-            lines.append(f"      f'({s_xi}) = {s_df}")
-            lines.append(f"   2. Sustituir en fórmula de Newton:")
-            lines.append(f"      x{i} = {s_xi} - ({s_f}) / ({s_df})")
-            lines.append(f"         ≈ {s_res}")
-            
-            if ea is not None:
-                lines.append(f"   3. Error aproximado:")
-                lines.append(f"      Ea = |{s_res} - {s_xi}| ≈ {s_ea}")
-            lines.append("-" * 40)
+        # Aplicar estilo visual limpio
+        try:
+            plt.style.use('seaborn-v0_8-whitegrid')
+        except:
+            pass  # Si no está disponible, usa el default
 
-    elif metodo == "Secante":
-        lines.append("-" * 60)
-        for p in pasos:
-            i = p["numero_de_iteracion"]
-            xi_ant = p["xi_ant"]
-            xi = p["xi"]
-            fi_ant = p["f_xi_ant"]
-            fi = p["f_xi"]
-            res = p["xi_nuevo"]
-            ea = p["error_absoluto_ea"]
+        layout = QtWidgets.QVBoxLayout(self)
+
+        self.figure = Figure(figsize=(8, 6), dpi=100)
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.toolbar = NavigationToolbar2QT(self.canvas, self)
+
+        layout.addWidget(self.toolbar)
+        layout.addWidget(self.canvas)
+
+        self._graficar_profesional(expresion_str, x_range, puntos_interes)
+
+    def _graficar_profesional(self, expr_str, x_range, puntos_interes):
+        ax = self.figure.add_subplot(111)
+        
+        # 1. Preparar datos
+        expr_clean = expr_str.replace("^", "**").replace("e^", "exp")
+        
+        try:
+            expr_sym = sp.sympify(expr_clean)
+            f_np = sp.lambdify(x, expr_sym, modules=['numpy'])
             
-            s_xia = fmt_number(xi_ant, 6)
-            s_xi  = fmt_number(xi, 6)
-            s_fa  = fmt_number(fi_ant, 6)
-            s_fi  = fmt_number(fi, 6)
-            s_res = fmt_number(res, 6)
-            s_ea  = fmt_number(ea, 7) if ea is not None else "---"
+            x_min, x_max = x_range
+            dist = abs(x_max - x_min)
+            if dist < 1e-9: dist = 1.0
             
-            lines.append(f"\nIteración {i} (usar x{i-2}={s_xia}, x{i-1}={s_xi}):")
-            lines.append(f"   1. Evaluaciones:")
-            lines.append(f"      f({s_xia}) ≈ {s_fa}")
-            lines.append(f"      f({s_xi})  ≈ {s_fi}")
-            lines.append(f"   2. Sustituir en la fórmula de la secante:")
-            # Formula visual: xi - f(xi)*(xi - x_ant) / (f(xi) - f(x_ant))
-            num = f"({s_fi}) * ({s_xi} - {s_xia})"
-            den = f"({s_fi} - {s_fa})"
-            lines.append(f"      x{i} = {s_xi} - [ {num} / {den} ]")
-            lines.append(f"         ≈ {s_res}")
+            # Margen dinámico para mejor visualización
+            margin = dist * 0.25
+            t = np.linspace(x_min - margin, x_max + margin, 600)
+            y = f_np(t)
+
+            # 2. Configuración de Ejes (Estilo Matemático)
+            ax.spines['left'].set_position('zero')
+            ax.spines['bottom'].set_position('zero')
+            ax.spines['right'].set_color('none')
+            ax.spines['top'].set_color('none')
             
-            if ea is not None:
-                lines.append(f"   Error aproximado respecto al paso anterior:")
-                lines.append(f"      Ea = |{s_res} - {s_xi}| ≈ {s_ea}")
-            lines.append("-" * 40)
+            # Flechas en los ejes (opcional, requiere ajustes manuales a veces)
+            ax.xaxis.set_ticks_position('bottom')
+            ax.yaxis.set_ticks_position('left')
+
+            # 3. Graficar la función
+            # Línea principal sólida y elegante
+            line, = ax.plot(t, y, label=f"$f(x)={expr_str}$", color="#1f77b4", linewidth=2.5, zorder=2)
             
-    return "\n".join(lines)
+            # Sombra suave bajo la curva (opcional, da profundidad)
+            ax.fill_between(t, y, 0, where=(y > 0), color='#1f77b4', alpha=0.1)
+            ax.fill_between(t, y, 0, where=(y < 0), color='#ff7f0e', alpha=0.05)
+
+            # 4. Puntos de interés con anotaciones
+            if puntos_interes:
+                for pt_x, label, color in puntos_interes:
+                    try:
+                        pt_x_val = float(pt_x)
+                        # Usar math para punto único (más seguro para singularidades)
+                        f_math = sp.lambdify(x, expr_sym, modules=['math'])
+                        pt_y_val = f_math(pt_x_val)
+                        
+                        # Marcador
+                        ax.scatter([pt_x_val], [pt_y_val], color=color, s=80, edgecolors='white', linewidth=1.5, zorder=5, label=label)
+                        
+                        # Líneas de proyección punteadas (Dashed)
+                        ax.plot([pt_x_val, pt_x_val], [0, pt_y_val], color=color, linestyle='--', linewidth=1, alpha=0.7)
+                        
+                        # Anotación de texto con coordenadas
+                        coord_text = f"{label}\n({pt_x_val:.2f}, {pt_y_val:.2f})"
+                        offset_y = 15 if pt_y_val >= 0 else -30
+                        
+                        ax.annotate(coord_text, 
+                                    xy=(pt_x_val, pt_y_val), 
+                                    xytext=(0, offset_y),
+                                    textcoords='offset points', 
+                                    ha='center', 
+                                    fontsize=9,
+                                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.8),
+                                    arrowprops=dict(arrowstyle="->", color=color, alpha=0.6))
+                                    
+                    except Exception: pass
+
+            # 5. Detalles finales
+            ax.set_title("Visualización de la Función", fontsize=14, pad=20, fontweight='bold')
+            ax.set_xlabel("x", loc='right', fontsize=12, style='italic')
+            ax.set_ylabel("f(x)", loc='top', fontsize=12, style='italic', rotation=0)
+            
+            # Rejilla sutil
+            ax.grid(True, which='both', linestyle=':', linewidth=0.5, color='gray', alpha=0.5)
+            
+            # Leyenda mejorada
+            ax.legend(loc='best', frameon=True, fancybox=True, framealpha=0.9, shadow=True)
+
+        except Exception as e:
+            ax.text(0.5, 0.5, f"Error al graficar:\n{e}", 
+                    ha='center', va='center', transform=ax.transAxes, color='red')
+        
+        self.figure.tight_layout()
+        self.canvas.draw()
+
+    def _graficar(self, expr_str, x_range, puntos_interes):
+        ax = self.figure.add_subplot(111)
+        
+        # Limpieza básica de la expresión para compatibilidad
+        # Convertimos ^ a ** y e^ a exp() para que Sympy/Python lo entiendan
+        expr_clean = expr_str.replace("^", "**").replace("e^", "exp")
+        
+        try:
+            # Usar sympy para convertir el string a una función numérica vectorizada (para numpy)
+            expr_sym = sp.sympify(expr_clean)
+            f_np = sp.lambdify(x, expr_sym, modules=['numpy'])
+            
+            # Definir el rango de graficación (eje X)
+            x_min, x_max = x_range
+            # Añadir un pequeño margen si los puntos son iguales o muy cercanos
+            if abs(x_max - x_min) < 1e-9:
+                margin = 1.0
+            else:
+                margin = (x_max - x_min) * 0.2
+            
+            t = np.linspace(x_min - margin, x_max + margin, 400)
+            
+            # Evaluar la función en el rango
+            y = f_np(t)
+
+            # Graficar la curva principal
+            ax.plot(t, y, label=f"f(x)={expr_str}", color="#2E86C1", linewidth=2)
+            
+            # Dibujar ejes X e Y
+            ax.axhline(0, color='black', linewidth=0.8)
+            ax.axvline(0, color='black', linewidth=0.8)
+
+            # Graficar puntos de interés (raíces, extremos, etc.)
+            if puntos_interes:
+                for pt_x, label, color in puntos_interes:
+                    try:
+                        # Convertir a float por seguridad
+                        pt_x_val = float(pt_x)
+                        # Evaluar función en ese punto específico
+                        # Usamos la versión sympy -> math para un solo punto por seguridad
+                        f_math = sp.lambdify(x, expr_sym, modules=['math'])
+                        pt_y_val = f_math(pt_x_val)
+                        
+                        # Dibujar el punto
+                        ax.plot(pt_x_val, pt_y_val, 'o', color=color, label=label, markersize=6)
+                        
+                        # Línea punteada vertical hacia el eje X
+                        ax.vlines(pt_x_val, 0, pt_y_val, colors=color, linestyles='dashed', alpha=0.5)
+                    except Exception:
+                        pass # Ignorar puntos que no se puedan evaluar (ej. fuera de dominio)
+
+            # Configuración final del gráfico
+            ax.grid(True, linestyle='--', alpha=0.6)
+            ax.legend()
+            ax.set_xlabel("x")
+            ax.set_ylabel("f(x)")
+            ax.set_title(f"Visualización de f(x)")
+            
+        except Exception as e:
+            # Mostrar error en el lienzo si la función es inválida
+            ax.text(0.5, 0.5, f"Error al graficar:\n{e}", 
+                    horizontalalignment='center', verticalalignment='center',
+                    transform=ax.transAxes, color='red', fontsize=12)
+        
+        self.canvas.draw()
 
 
 # ==================================================
@@ -255,29 +215,33 @@ def generar_reporte_abierto(info: dict) -> str:
 # ==================================================
 class TabMetodosNumericos(QtWidgets.QWidget):
     """
-    Pestaña: Métodos numéricos, errores y notación posicional.
+    Pestaña que agrupa:
+    1. Métodos de Raíces (Cerrados: Bisección, Regla Falsa)
+    2. Métodos de Raíces (Abiertos: Newton-Raphson, Secante)
+    3. Teoría de Errores y Propagación
+    4. Notación Posicional
     """
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        # Caches para guardar info y poder generar reporte detallado
+        # Variables para almacenar los resultados y poder generar reportes o gráficas
         self.info_raices_cache = None
         self.info_newton_cache = None
         self.info_secante_cache = None
 
         main = QtWidgets.QVBoxLayout(self)
 
-        # Contenedor de subpestañas
+        # Contenedor de sub-pestañas
         self.tabs = QtWidgets.QTabWidget()
         main.addWidget(self.tabs)
 
-        # --------------------------------------------------
-        # Tab 1: Métodos de raíces (cerrados)
-        # --------------------------------------------------
+        # ==================================================
+        # Sub-pestaña 1: Métodos Cerrados
+        # ==================================================
         tab_raices = QtWidgets.QWidget()
         lay_raices = QtWidgets.QVBoxLayout(tab_raices)
 
-        grp_raices = QtWidgets.QGroupBox("Raíces de ecuaciones no lineales — Métodos cerrados (Bisección / Regla falsa)")
+        grp_raices = QtWidgets.QGroupBox("Métodos Cerrados (Bisección / Regla Falsa)")
         v_raices = QtWidgets.QVBoxLayout(grp_raices)
 
         fila_fx = QtWidgets.QHBoxLayout()
@@ -292,52 +256,55 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         self.ed_tol = QtWidgets.QLineEdit("1e-4")
         self.ed_max = QtWidgets.QLineEdit("50")
 
-        fila_int.addWidget(QtWidgets.QLabel("Extremo izquierdo a:"))
+        fila_int.addWidget(QtWidgets.QLabel("a:"))
         fila_int.addWidget(self.ed_a)
-        fila_int.addSpacing(10)
-        fila_int.addWidget(QtWidgets.QLabel("Extremo derecho b:"))
+        fila_int.addWidget(QtWidgets.QLabel("b:"))
         fila_int.addWidget(self.ed_b)
-        fila_int.addSpacing(10)
-        fila_int.addWidget(QtWidgets.QLabel("Error deseado (tolerancia):"))
+        fila_int.addWidget(QtWidgets.QLabel("Tol:"))
         fila_int.addWidget(self.ed_tol)
-        fila_int.addSpacing(10)
-        fila_int.addWidget(QtWidgets.QLabel("Máx. iteraciones:"))
+        fila_int.addWidget(QtWidgets.QLabel("Iter:"))
         fila_int.addWidget(self.ed_max)
         v_raices.addLayout(fila_int)
 
         fila_met = QtWidgets.QHBoxLayout()
-        fila_met.addWidget(QtWidgets.QLabel("Método:"))
         self.cbo_metodo = QtWidgets.QComboBox()
         self.cbo_metodo.addItems(["Bisección", "Regla falsa"])
+        fila_met.addWidget(QtWidgets.QLabel("Método:"))
         fila_met.addWidget(self.cbo_metodo)
         fila_met.addStretch(1)
         v_raices.addLayout(fila_met)
 
         # Botones Tab 1
-        self.btn_calcular_raiz = btn("Calcular raíz y tabla de errores")
+        h_btns_raices = QtWidgets.QHBoxLayout()
+        self.btn_calcular_raiz = btn("Calcular")
         self.btn_calcular_raiz.clicked.connect(self.on_calcular_raiz)
-        v_raices.addWidget(self.btn_calcular_raiz)
-
-        self.btn_paso_a_paso = btn("Ver Paso a Paso (Detallado)", kind="ghost")
+        
+        self.btn_paso_a_paso = btn("Ver Pasos", kind="ghost")
         self.btn_paso_a_paso.clicked.connect(self.on_mostrar_detalles)
         self.btn_paso_a_paso.setEnabled(False)
-        v_raices.addWidget(self.btn_paso_a_paso)
+
+        self.btn_graf_raices = btn("Graficar", kind="ghost")
+        self.btn_graf_raices.clicked.connect(self.on_graficar_raices)
+
+        h_btns_raices.addWidget(self.btn_calcular_raiz)
+        h_btns_raices.addWidget(self.btn_paso_a_paso)
+        h_btns_raices.addWidget(self.btn_graf_raices)
+        v_raices.addLayout(h_btns_raices)
 
         self.out_raices = OutputArea()
         v_raices.addWidget(self.out_raices)
 
         lay_raices.addWidget(grp_raices)
         lay_raices.addStretch(1)
+        self.tabs.addTab(tab_raices, "Cerrados")
 
-        self.tabs.addTab(tab_raices, "Métodos cerrados")
-
-        # --------------------------------------------------
-        # Tab 2: Newton-Raphson (método abierto)
-        # --------------------------------------------------
+        # ==================================================
+        # Sub-pestaña 2: Newton-Raphson
+        # ==================================================
         tab_newton = QtWidgets.QWidget()
         lay_newton = QtWidgets.QVBoxLayout(tab_newton)
 
-        grp_newton = QtWidgets.QGroupBox("Método abierto: Newton-Raphson")
+        grp_newton = QtWidgets.QGroupBox("Newton-Raphson (Método Abierto)")
         v_newton = QtWidgets.QVBoxLayout(grp_newton)
 
         fila_fx_n = QtWidgets.QHBoxLayout()
@@ -351,42 +318,45 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         self.ed_tol_newton = QtWidgets.QLineEdit("1e-4")
         self.ed_max_newton = QtWidgets.QLineEdit("50")
 
-        fila_newton.addWidget(QtWidgets.QLabel("x0 inicial:"))
+        fila_newton.addWidget(QtWidgets.QLabel("x0:"))
         fila_newton.addWidget(self.ed_x0_newton)
-        fila_newton.addSpacing(10)
-        fila_newton.addWidget(QtWidgets.QLabel("Tolerancia:"))
+        fila_newton.addWidget(QtWidgets.QLabel("Tol:"))
         fila_newton.addWidget(self.ed_tol_newton)
-        fila_newton.addSpacing(10)
-        fila_newton.addWidget(QtWidgets.QLabel("Máx. iteraciones:"))
+        fila_newton.addWidget(QtWidgets.QLabel("Iter:"))
         fila_newton.addWidget(self.ed_max_newton)
         v_newton.addLayout(fila_newton)
 
-        self.btn_newton = btn("Calcular Newton-Raphson")
+        # Botones Tab 2
+        h_btns_newton = QtWidgets.QHBoxLayout()
+        self.btn_newton = btn("Calcular")
         self.btn_newton.clicked.connect(self.on_calcular_newton)
-        v_newton.addWidget(self.btn_newton)
-
-        # --- NUEVO BOTÓN NEWTON ---
-        self.btn_paso_newton = btn("Ver Paso a Paso (Detallado)", kind="ghost")
+        
+        self.btn_paso_newton = btn("Ver Pasos", kind="ghost")
         self.btn_paso_newton.clicked.connect(self.on_mostrar_detalles_newton)
         self.btn_paso_newton.setEnabled(False)
-        v_newton.addWidget(self.btn_paso_newton)
-        # --------------------------
+
+        self.btn_graf_newton = btn("Graficar", kind="ghost")
+        self.btn_graf_newton.clicked.connect(self.on_graficar_newton)
+
+        h_btns_newton.addWidget(self.btn_newton)
+        h_btns_newton.addWidget(self.btn_paso_newton)
+        h_btns_newton.addWidget(self.btn_graf_newton)
+        v_newton.addLayout(h_btns_newton)
 
         self.out_newton = OutputArea()
         v_newton.addWidget(self.out_newton)
 
         lay_newton.addWidget(grp_newton)
         lay_newton.addStretch(1)
+        self.tabs.addTab(tab_newton, "Newton")
 
-        self.tabs.addTab(tab_newton, "Newton-Raphson")
-
-        # --------------------------------------------------
-        # Tab 3: Secante (método abierto)
-        # --------------------------------------------------
+        # ==================================================
+        # Sub-pestaña 3: Secante
+        # ==================================================
         tab_secante = QtWidgets.QWidget()
         lay_secante = QtWidgets.QVBoxLayout(tab_secante)
 
-        grp_sec = QtWidgets.QGroupBox("Método abierto: Secante")
+        grp_sec = QtWidgets.QGroupBox("Secante (Método Abierto)")
         v_sec = QtWidgets.QVBoxLayout(grp_sec)
 
         fila_fx_s = QtWidgets.QHBoxLayout()
@@ -408,39 +378,43 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         fila_sec2 = QtWidgets.QHBoxLayout()
         self.ed_tol_secante = QtWidgets.QLineEdit("1e-4")
         self.ed_max_secante = QtWidgets.QLineEdit("50")
-        fila_sec2.addWidget(QtWidgets.QLabel("Tolerancia:"))
+        fila_sec2.addWidget(QtWidgets.QLabel("Tol:"))
         fila_sec2.addWidget(self.ed_tol_secante)
-        fila_sec2.addSpacing(10)
-        fila_sec2.addWidget(QtWidgets.QLabel("Máx. iteraciones:"))
+        fila_sec2.addWidget(QtWidgets.QLabel("Iter:"))
         fila_sec2.addWidget(self.ed_max_secante)
         v_sec.addLayout(fila_sec2)
 
-        self.btn_secante = btn("Calcular Secante")
+        # Botones Tab 3
+        h_btns_sec = QtWidgets.QHBoxLayout()
+        self.btn_secante = btn("Calcular")
         self.btn_secante.clicked.connect(self.on_calcular_secante)
-        v_sec.addWidget(self.btn_secante)
 
-        # --- NUEVO BOTÓN SECANTE ---
-        self.btn_paso_secante = btn("Ver Paso a Paso (Detallado)", kind="ghost")
+        self.btn_paso_secante = btn("Ver Pasos", kind="ghost")
         self.btn_paso_secante.clicked.connect(self.on_mostrar_detalles_secante)
         self.btn_paso_secante.setEnabled(False)
-        v_sec.addWidget(self.btn_paso_secante)
-        # ---------------------------
+
+        self.btn_graf_secante = btn("Graficar", kind="ghost")
+        self.btn_graf_secante.clicked.connect(self.on_graficar_secante)
+
+        h_btns_sec.addWidget(self.btn_secante)
+        h_btns_sec.addWidget(self.btn_paso_secante)
+        h_btns_sec.addWidget(self.btn_graf_secante)
+        v_sec.addLayout(h_btns_sec)
 
         self.out_secante = OutputArea()
         v_sec.addWidget(self.out_secante)
 
         lay_secante.addWidget(grp_sec)
         lay_secante.addStretch(1)
-
         self.tabs.addTab(tab_secante, "Secante")
 
-        # --------------------------------------------------
-        # Tab 4: Errores numéricos y propagación
-        # --------------------------------------------------
+        # ==================================================
+        # Sub-pestaña 4: Errores y Propagación
+        # ==================================================
         tab_errores = QtWidgets.QWidget()
         lay_errores = QtWidgets.QVBoxLayout(tab_errores)
 
-        grp_err = QtWidgets.QGroupBox("Errores numéricos: error absoluto, relativo y relativo porcentual")
+        grp_err = QtWidgets.QGroupBox("Errores Numéricos")
         v_err = QtWidgets.QVBoxLayout(grp_err)
 
         fila_val = QtWidgets.QHBoxLayout()
@@ -454,12 +428,13 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         v_err.addLayout(fila_val)
 
         fila_btn_err = QtWidgets.QHBoxLayout()
-        self.btn_calc_err = btn("Calcular ea, er y er%")
+        self.btn_calc_err = btn("Calcular errores")
         self.btn_calc_err.clicked.connect(self.on_calcular_errores)
         self.btn_tipos_err = btn("Tipos de error (teoría)", kind="ghost")
         self.btn_tipos_err.clicked.connect(self.on_tipos_error)
-        self.btn_ej_flot = btn("Ejemplo 0.1 + 0.2", kind="ghost")
+        self.btn_ej_flot = btn("Ejemplo flotante", kind="ghost")
         self.btn_ej_flot.clicked.connect(self.on_ejemplo_flotante)
+        
         fila_btn_err.addWidget(self.btn_calc_err)
         fila_btn_err.addWidget(self.btn_tipos_err)
         fila_btn_err.addWidget(self.btn_ej_flot)
@@ -468,10 +443,9 @@ class TabMetodosNumericos(QtWidgets.QWidget):
 
         self.out_err = OutputArea()
         v_err.addWidget(self.out_err)
-
         lay_errores.addWidget(grp_err)
 
-        grp_prop = QtWidgets.QGroupBox("Propagación del error en una función y = f(x)")
+        grp_prop = QtWidgets.QGroupBox("Propagación del Error")
         v_prop = QtWidgets.QVBoxLayout(grp_prop)
 
         fila_fx_prop = QtWidgets.QHBoxLayout()
@@ -490,7 +464,7 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         fila_x0.addWidget(self.ed_dx)
         v_prop.addLayout(fila_x0)
 
-        self.btn_prop = btn("Calcular propagación del error")
+        self.btn_prop = btn("Calcular propagación")
         self.btn_prop.clicked.connect(self.on_propagacion)
         v_prop.addWidget(self.btn_prop)
 
@@ -499,12 +473,11 @@ class TabMetodosNumericos(QtWidgets.QWidget):
 
         lay_errores.addWidget(grp_prop)
         lay_errores.addStretch(1)
+        self.tabs.addTab(tab_errores, "Errores")
 
-        self.tabs.addTab(tab_errores, "Errores y propagación")
-
-        # --------------------------------------------------
-        # Tab 5: Notación posicional
-        # --------------------------------------------------
+        # ==================================================
+        # Sub-pestaña 5: Notación Posicional
+        # ==================================================
         tab_notacion = QtWidgets.QWidget()
         lay_not = QtWidgets.QVBoxLayout(tab_notacion)
 
@@ -518,9 +491,9 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         v_not.addLayout(fila_n)
 
         fila_btn_not = QtWidgets.QHBoxLayout()
-        self.btn_base10 = btn("Descomponer en base 10")
+        self.btn_base10 = btn("Base 10")
         self.btn_base10.clicked.connect(self.on_base10)
-        self.btn_base2 = btn("Descomponer en base 2")
+        self.btn_base2 = btn("Base 2")
         self.btn_base2.clicked.connect(self.on_base2)
         fila_btn_not.addWidget(self.btn_base10)
         fila_btn_not.addWidget(self.btn_base2)
@@ -532,11 +505,90 @@ class TabMetodosNumericos(QtWidgets.QWidget):
 
         lay_not.addWidget(grp_not)
         lay_not.addStretch(1)
-
-        self.tabs.addTab(tab_notacion, "Notación posicional")
+        self.tabs.addTab(tab_notacion, "Notación")
 
     # ==================================================
-    # Helpers para formatear tabla
+    # LÓGICA DE GRAFICADO
+    # ==================================================
+    def on_graficar_raices(self):
+        """Grafica f(x) en el intervalo [a, b] para métodos cerrados."""
+        try:
+            expr = self.ed_expr.text().strip()
+            a = float(self.ed_a.text())
+            b = float(self.ed_b.text())
+            
+            # Puntos a marcar: extremos a y b
+            puntos = [(a, "a", "red"), (b, "b", "red")]
+            
+            # Si ya hay un cálculo realizado, agregar la raíz encontrada
+            if self.info_raices_cache and self.info_raices_cache.get("raiz_aproximada"):
+                xr = self.info_raices_cache["raiz_aproximada"]
+                puntos.append((xr, "Raiz", "green"))
+
+            # Crear ventana gráfica
+            # Ampliamos un poco el rango para ver contexto
+            margen = abs(b - a) * 0.1
+            VentanaGrafica(expr, (min(a,b)-margen, max(a,b)+margen), puntos, self).exec()
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Error al graficar", f"Verifique los datos de entrada.\n\nDetalle: {e}")
+
+    def on_graficar_newton(self):
+        """Grafica f(x) alrededor de x0 para Newton."""
+        try:
+            expr = self.ed_expr_newton.text().strip()
+            x0 = float(self.ed_x0_newton.text())
+            
+            # Puntos iniciales
+            puntos = [(x0, "x0", "red")]
+            
+            # Definir rango por defecto
+            x_min, x_max = x0 - 2, x0 + 2
+
+            # Si hay resultado, ajustar rango y marcar raíz
+            if self.info_newton_cache and self.info_newton_cache.get("raiz_aproximada"):
+                xr = self.info_newton_cache["raiz_aproximada"]
+                puntos.append((xr, "Raiz", "green"))
+                
+                # Ajustar ventana para incluir x0 y la raíz
+                mn = min(x0, xr)
+                mx = max(x0, xr)
+                dist = mx - mn
+                if dist < 1e-9: dist = 1.0
+                margin = dist * 0.5
+                x_min, x_max = mn - margin, mx + margin
+
+            VentanaGrafica(expr, (x_min, x_max), puntos, self).exec()
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Error al graficar", f"Verifique los datos de entrada.\n\nDetalle: {e}")
+
+    def on_graficar_secante(self):
+        """Grafica f(x) alrededor de x0 y x1 para Secante."""
+        try:
+            expr = self.ed_expr_secante.text().strip()
+            x0 = float(self.ed_x0_secante.text())
+            x1 = float(self.ed_x1_secante.text())
+            
+            puntos = [(x0, "x0", "red"), (x1, "x1", "orange")]
+            
+            mn = min(x0, x1)
+            mx = max(x0, x1)
+
+            if self.info_secante_cache and self.info_secante_cache.get("raiz_aproximada"):
+                xr = self.info_secante_cache["raiz_aproximada"]
+                puntos.append((xr, "Raiz", "green"))
+                mn = min(mn, xr)
+                mx = max(mx, xr)
+
+            dist = mx - mn
+            if dist < 1e-9: dist = 1.0
+            margin = dist * 0.5
+            
+            VentanaGrafica(expr, (mn - margin, mx + margin), puntos, self).exec()
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Error al graficar", f"Verifique los datos de entrada.\n\nDetalle: {e}")
+
+    # ==================================================
+    # Métodos Auxiliares
     # ==================================================
     def _tabla_pasos(self, info):
         """
@@ -547,13 +599,14 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         if not pasos:
             return "No se generaron iteraciones."
 
-        # Detectar tipo para ajustar header
-        if info["metodo"] == "Newton-Raphson":
+        # Ajustar cabecera según método
+        metodo = info.get("metodo", "")
+        if metodo == "Newton-Raphson":
              header = (
                 "Iter   xi         f(xi)        f'(xi)       ea           er%\n"
                 "-------------------------------------------------------------------"
             )
-        elif info["metodo"] == "Secante":
+        elif metodo == "Secante":
              header = (
                 "Iter   xi_ant     xi         f(xi)        ea           er%\n"
                 "-------------------------------------------------------------------"
@@ -568,7 +621,7 @@ class TabMetodosNumericos(QtWidgets.QWidget):
         for p in pasos:
             it = p["numero_de_iteracion"]
             
-            # Helper para formatear
+            # Helper para formatear valores o nulos
             def fval(v):
                 if v is None: return "   ---   "
                 return fmt_number(float(v), DEFAULT_DEC, False).rjust(10)
@@ -576,12 +629,12 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             ea = fval(p.get("error_absoluto_ea"))
             erp = fval(p.get("error_relativo_porcentual"))
 
-            if info["metodo"] == "Newton-Raphson":
+            if metodo == "Newton-Raphson":
                 xi = fval(p.get("xi"))
                 fxi = fval(p.get("f_xi"))
                 dfxi = fval(p.get("df_xi"))
                 fila = f"{it:>3}  {xi} {fxi} {dfxi} {ea} {erp}"
-            elif info["metodo"] == "Secante":
+            elif metodo == "Secante":
                 xant = fval(p.get("xi_ant"))
                 xi = fval(p.get("xi"))
                 fxi = fval(p.get("f_xi"))
@@ -597,8 +650,30 @@ class TabMetodosNumericos(QtWidgets.QWidget):
 
         return "\n".join(filas)
 
+    def _mostrar_dialogo(self, texto, titulo):
+        try:
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle(f"Paso a Paso Detallado - {titulo}")
+            dialog.resize(700, 700)
+            layout = QtWidgets.QVBoxLayout(dialog)
+            
+            text_edit = QtWidgets.QTextEdit()
+            text_edit.setReadOnly(True)
+            text_edit.setFont(QtGui.QFont("Consolas", 10))
+            text_edit.setPlainText(texto)
+            
+            layout.addWidget(text_edit)
+            
+            btn_ok = QtWidgets.QPushButton("Cerrar")
+            btn_ok.clicked.connect(dialog.accept)
+            layout.addWidget(btn_ok)
+            
+            dialog.exec()
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Error", f"Error al generar reporte:\n{e}")
+
     # ==================================================
-    # Handlers Métodos cerrados
+    # Handlers de Cálculo
     # ==================================================
     def on_calcular_raiz(self):
         try:
@@ -613,11 +688,10 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             else:
                 info = regla_falsa_descriptiva(expr, a, b, tol, max_iter)
 
-            # --- GUARDAR RESULTADO Y ACTIVAR BOTÓN ---
             self.info_raices_cache = info
             self.btn_paso_a_paso.setEnabled(True)
-            # -----------------------------------------
 
+            # Construir salida principal
             lineas = []
             lineas.append(f"Método: {info['metodo']}")
             lineas.append(f"f(x) = {expr}")
@@ -627,14 +701,8 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             lineas.append(self._tabla_pasos(info))
             lineas.append("")
 
-            lineas.append(
-                "Raíz aproximada: "
-                + fmt_number(info["raiz_aproximada"], DEFAULT_DEC, False)
-            )
-            lineas.append(
-                "f(raíz) ≈ "
-                + fmt_number(info["valor_funcion_en_raiz"], DEFAULT_DEC, False)
-            )
+            lineas.append("Raíz aproximada: " + fmt_number(info["raiz_aproximada"], DEFAULT_DEC, False))
+            lineas.append("f(raíz) ≈ " + fmt_number(info["valor_funcion_en_raiz"], DEFAULT_DEC, False))
 
             pasos = info.get("pasos", [])
             if pasos:
@@ -644,84 +712,32 @@ class TabMetodosNumericos(QtWidgets.QWidget):
                 ea_final = ultimo.get("error_absoluto_ea")
 
                 lineas.append("Iteraciones totales: " + str(iter_tot))
-
-                if erp_final is None:
-                    erp_str = "---"
-                else:
-                    erp_str = fmt_number(erp_final, DEFAULT_DEC, False)
-
+                erp_str = "---" if erp_final is None else fmt_number(erp_final, DEFAULT_DEC, False)
                 lineas.append("Error relativo porcentual final er% = " + erp_str)
 
                 criterio = info.get("criterio_de_paro")
                 if criterio == "tolerancia" and ea_final is not None and ea_final <= tol:
-                    comentario = (
-                        "Comentario: el método alcanzó la tolerancia indicada; "
-                        "la sucesión de aproximaciones se considera convergente "
-                        "en el intervalo dado."
-                    )
+                    lineas.append("Comentario: Convergencia alcanzada según tolerancia.")
                 elif criterio == "max_iter":
-                    comentario = (
-                        "Comentario: se alcanzó el número máximo de iteraciones "
-                        "antes de cumplir la tolerancia; la convergencia aún no "
-                        "queda garantizada con este criterio."
-                    )
+                    lineas.append("Comentario: Se alcanzó el máximo de iteraciones.")
                 else:
-                    comentario = (
-                        "Comentario: el proceso de iteraciones se detuvo según "
-                        "el criterio de paro configurado."
-                    )
-                lineas.append(comentario)
+                    lineas.append(f"Comentario: Parada por {criterio}.")
 
             lineas.append("")
-            lineas.append("Recordatorio de las fórmulas de error entre iteraciones:")
-            lineas.append("ea = |xr - xr_anterior|")
-            lineas.append("er = ea / |xr|")
-            lineas.append("er% = er * 100")
+            lineas.append("Fórmulas usadas: ea = |xr - x_ant|, er = ea/|xr|.")
 
             self.out_raices.clear_and_write("\n".join(lineas))
         except Exception as e:
-            mensaje = str(e)
-            if "El intervalo no es válido" in mensaje:
-                self.out_raices.clear_and_write("El intervalo no es válido")
+            msg = str(e)
+            if "El intervalo no es válido" in msg:
+                self.out_raices.clear_and_write("Error: El intervalo no es válido (f(a)*f(b) > 0).")
             else:
-                self.out_raices.clear_and_write(f"Error: {mensaje}")
+                self.out_raices.clear_and_write(f"Error: {msg}")
 
     def on_mostrar_detalles(self):
-        """Muestra paso a paso para métodos cerrados"""
         if not self.info_raices_cache: return
         self._mostrar_dialogo(generar_reporte_paso_a_paso(self.info_raices_cache), self.info_raices_cache["metodo"])
 
-    def on_mostrar_detalles_newton(self):
-        """Muestra paso a paso para Newton"""
-        if not self.info_newton_cache: return
-        self._mostrar_dialogo(generar_reporte_abierto(self.info_newton_cache), "Newton-Raphson")
-
-    def on_mostrar_detalles_secante(self):
-        """Muestra paso a paso para Secante"""
-        if not self.info_secante_cache: return
-        self._mostrar_dialogo(generar_reporte_abierto(self.info_secante_cache), "Secante")
-
-    def _mostrar_dialogo(self, texto, titulo):
-        try:
-            dialog = QtWidgets.QDialog(self)
-            dialog.setWindowTitle(f"Paso a Paso Detallado - {titulo}")
-            dialog.resize(700, 700)
-            layout = QtWidgets.QVBoxLayout(dialog)
-            text_edit = QtWidgets.QTextEdit()
-            text_edit.setReadOnly(True)
-            text_edit.setFont(QtGui.QFont("Consolas", 10))
-            text_edit.setPlainText(texto)
-            layout.addWidget(text_edit)
-            btn_ok = QtWidgets.QPushButton("Cerrar")
-            btn_ok.clicked.connect(dialog.accept)
-            layout.addWidget(btn_ok)
-            dialog.exec()
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Error", f"Error al generar reporte:\n{e}")
-
-    # ==================================================
-    # Handlers Newton-Raphson
-    # ==================================================
     def on_calcular_newton(self):
         try:
             expr = self.ed_expr_newton.text().strip()
@@ -730,8 +746,6 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             max_iter = int(self.ed_max_newton.text())
 
             info = newton_raphson_descriptiva(expr, x0, tol, max_iter)
-            
-            # GUARDAR CACHE Y ACTIVAR BOTON
             self.info_newton_cache = info
             self.btn_paso_newton.setEnabled(True)
 
@@ -739,57 +753,28 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             lineas.append(f"Método: {info['metodo']}")
             lineas.append(f"f(x) = {expr}")
             lineas.append(f"x0 inicial: {x0}")
-            lineas.append(f"Tolerancia: {tol}")
             lineas.append("")
             lineas.append(self._tabla_pasos(info))
             lineas.append("")
-
-            lineas.append(
-                "Raíz aproximada: "
-                + fmt_number(info["raiz_aproximada"], DEFAULT_DEC, False)
-            )
-            lineas.append(
-                "f(raíz) ≈ "
-                + fmt_number(info["valor_funcion_en_raiz"], DEFAULT_DEC, False)
-            )
-
+            lineas.append("Raíz aproximada: " + fmt_number(info["raiz_aproximada"], DEFAULT_DEC, False))
+            
             pasos = info.get("pasos", [])
             if pasos:
                 ultimo = pasos[-1]
-                iter_tot = info.get("iteraciones_totales", len(pasos))
+                iter_tot = info.get("iteraciones_totales")
                 erp_final = ultimo.get("error_relativo_porcentual")
-                ea_final = ultimo.get("error_absoluto_ea")
-
                 lineas.append("Iteraciones totales: " + str(iter_tot))
-
                 erp_str = "---" if erp_final is None else fmt_number(erp_final, DEFAULT_DEC, False)
                 lineas.append("Error relativo porcentual final er% = " + erp_str)
 
-                criterio = info.get("criterio_de_paro")
-                if criterio == "tolerancia" and ea_final is not None and ea_final <= tol:
-                    comentario = (
-                        "Comentario: el método alcanzó la tolerancia indicada; "
-                        "la sucesión de aproximaciones se considera convergente "
-                        "cerca de la raíz buscada."
-                    )
-                elif criterio == "max_iter":
-                    comentario = (
-                        "Comentario: se alcanzó el número máximo de iteraciones "
-                        "antes de cumplir la tolerancia; puede requerirse más iteraciones "
-                        "o un x0 diferente."
-                    )
-                else:
-                    comentario = f"Comentario: criterio de paro '{criterio}'."
-                lineas.append(comentario)
-
             self.out_newton.clear_and_write("\n".join(lineas))
-
         except Exception as e:
             self.out_newton.clear_and_write(f"Error: {e}")
 
-    # ==================================================
-    # Handlers Secante
-    # ==================================================
+    def on_mostrar_detalles_newton(self):
+        if not self.info_newton_cache: return
+        self._mostrar_dialogo(generar_reporte_abierto(self.info_newton_cache), "Newton-Raphson")
+
     def on_calcular_secante(self):
         try:
             expr = self.ed_expr_secante.text().strip()
@@ -799,82 +784,45 @@ class TabMetodosNumericos(QtWidgets.QWidget):
             max_iter = int(self.ed_max_secante.text())
 
             info = secante_descriptiva(expr, x0, x1, tol, max_iter)
-            
-            # GUARDAR CACHE Y ACTIVAR BOTON
             self.info_secante_cache = info
             self.btn_paso_secante.setEnabled(True)
 
             lineas = []
             lineas.append(f"Método: {info['metodo']}")
             lineas.append(f"f(x) = {expr}")
-            lineas.append(f"x0 = {x0}, x1 = {x1}")
-            lineas.append(f"Tolerancia: {tol}")
+            lineas.append(f"Puntos iniciales: x0={x0}, x1={x1}")
             lineas.append("")
             lineas.append(self._tabla_pasos(info))
             lineas.append("")
-
-            lineas.append(
-                "Raíz aproximada: "
-                + fmt_number(info["raiz_aproximada"], DEFAULT_DEC, False)
-            )
-            lineas.append(
-                "f(raíz) ≈ "
-                + fmt_number(info["valor_funcion_en_raiz"], DEFAULT_DEC, False)
-            )
-
+            lineas.append("Raíz aproximada: " + fmt_number(info["raiz_aproximada"], DEFAULT_DEC, False))
+            
             pasos = info.get("pasos", [])
             if pasos:
                 ultimo = pasos[-1]
-                iter_tot = info.get("iteraciones_totales", len(pasos))
+                iter_tot = info.get("iteraciones_totales")
                 erp_final = ultimo.get("error_relativo_porcentual")
-                ea_final = ultimo.get("error_absoluto_ea")
-
                 lineas.append("Iteraciones totales: " + str(iter_tot))
-
                 erp_str = "---" if erp_final is None else fmt_number(erp_final, DEFAULT_DEC, False)
                 lineas.append("Error relativo porcentual final er% = " + erp_str)
 
-                criterio = info.get("criterio_de_paro")
-                if criterio == "tolerancia" and ea_final is not None and ea_final <= tol:
-                    comentario = (
-                        "Comentario: el método alcanzó la tolerancia indicada; "
-                        "la sucesión de aproximaciones se considera convergente."
-                    )
-                elif criterio == "max_iter":
-                    comentario = (
-                        "Comentario: se alcanzó el número máximo de iteraciones "
-                        "antes de cumplir la tolerancia; puede requerir mejor intervalo inicial."
-                    )
-                else:
-                    comentario = f"Comentario: criterio de paro '{criterio}'."
-                lineas.append(comentario)
-
             self.out_secante.clear_and_write("\n".join(lineas))
-
         except Exception as e:
             self.out_secante.clear_and_write(f"Error: {e}")
 
-    # ==================================================
-    # Handlers Errores / Notación / Propagación
-    # ==================================================
+    def on_mostrar_detalles_secante(self):
+        if not self.info_secante_cache: return
+        self._mostrar_dialogo(generar_reporte_abierto(self.info_secante_cache), "Secante")
+
     def on_calcular_errores(self):
         try:
             m = float(self.ed_val_real.text())
             x_val = float(self.ed_val_aprox.text())
             info = calcular_errores(m, x_val)
-
+            
             dec_err = 6
             ea = fmt_number(info["error_absoluto"], dec_err, False)
-            er = (
-                "---"
-                if info["error_relativo"] is None
-                else fmt_number(info["error_relativo"], dec_err, False)
-            )
-            erp = (
-                "---"
-                if info["error_relativo_porcentual"] is None
-                else fmt_number(info["error_relativo_porcentual"], dec_err, False)
-            )
+            er = "---" if info["error_relativo"] is None else fmt_number(info["error_relativo"], dec_err, False)
+            erp = "---" if info["error_relativo_porcentual"] is None else fmt_number(info["error_relativo_porcentual"], dec_err, False)
 
             texto = (
                 f"Valor real m = {info['valor_real']}\n"
