@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import List, Dict, Any
 import math
 
-from sistema_lineal import SistemaLineal
+# Importamos la función de formateo necesaria
+from sistema_lineal import SistemaLineal, formatear_solucion_parametrica
 from utilidad import *
 
 # -----------------------------
@@ -139,11 +140,15 @@ def combinacion_lineal_explicada(vectores: List[List[float]], coef: List[float],
 def ecuacion_vectorial(vectores: List[List[float]], b: List[float]) -> Dict[str, Any]:
     if not vectores:
         return {"estado": "sin_vectores"}
-    # Validar entradas
+    
+    # --- Validaciones y definición de n ---
     for v in vectores:
         _check_vector(v, "vector")
     _check_vector(b, "b")
+    
+    # AQUI ES DONDE SE DEFINE 'n' QUE FALTABA
     n = len(vectores[0])
+    
     for v in vectores:
         if len(v) != n:
             raise ValueError("Vectores de distinta dimensión")
@@ -155,10 +160,22 @@ def ecuacion_vectorial(vectores: List[List[float]], b: List[float]) -> Dict[str,
     for j, v in enumerate(vectores):
         for i in range(n):
             A[i][j] = float(v[i])
+    
+    # Construir matriz aumentada [A|b]
     Ab = [fila + [float(b[i])] for i, fila in enumerate(A)]
 
     sis = SistemaLineal(Ab, decimales=4)
     out = sis.gauss_jordan()
+    
+    # Generar la salida paramétrica
+    nombres_c = [f"c{j+1}" for j in range(len(vectores))]
+    out["salida_parametrica"] = formatear_solucion_parametrica(
+        out, 
+        nombres_vars=nombres_c, 
+        dec=4, 
+        fracciones=True
+    )
+
     out["reportes"] = out.get("pasos", [])
     return out
 
