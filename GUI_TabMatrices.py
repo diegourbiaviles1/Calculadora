@@ -104,7 +104,7 @@ class TabProg5(QtWidgets.QWidget):
         self.sp_p = QtWidgets.QSpinBox(); self.sp_p.setRange(1, 50); self.sp_p.setValue(2)
         top.addWidget(QtWidgets.QLabel(" n=")); top.addWidget(self.sp_p)
         top.addSpacing(16)
-        self.k_edit = QtWidgets.QLineEdit("1"); self.k_edit.setValidator(QtGui.QDoubleValidator())
+        self.k_edit = QtWidgets.QLineEdit("1"); 
         self.k_edit.setMaximumWidth(120)
         top.addWidget(QtWidgets.QLabel("r =")); top.addWidget(self.k_edit)
         top.addStretch(1)
