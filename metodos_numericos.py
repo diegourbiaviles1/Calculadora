@@ -23,9 +23,27 @@ def _insertar_multiplicacion_implicita(expr: str) -> str:
     expr = re.sub(r'x\s*(\d|\()', r'x*\1', expr)
     return expr
 
+def _preprocesar_para_sympy(expr: str) -> str:
+    """
+    Prepara el string para que Sympy lo entienda correctamente:
+    1. Reemplaza ^ por **
+    2. Reemplaza 'ln' por 'log' (Sympy usa log para logaritmo natural)
+    3. Reemplaza 'e' por 'E' (Constante de Euler en Sympy), respetando palabras completas.
+    """
+    expr = expr.replace("^", "**")
+    
+    # Reemplazar 'ln' por 'log' (palabra completa)
+    expr = re.sub(r'\bln\b', 'log', expr, flags=re.IGNORECASE)
+    
+    # Reemplazar 'e' por 'E' (para Euler), pero NO dentro de palabras como 'sec', 'ceil', etc.
+    # \b indica límites de palabra.
+    expr = re.sub(r'\be\b', 'E', expr)
+    
+    return expr
+
 def _normalizar_expresion(expr: str) -> str:
     """
-    Normaliza la expresión de entrada básica.
+    Normaliza la expresión de entrada básica para visualización o uso simple.
     """
     expr = expr.replace("^", "**")
     expr = _insertar_multiplicacion_implicita(expr)
@@ -33,24 +51,25 @@ def _normalizar_expresion(expr: str) -> str:
 
 def _make_func(expr_str: str):
     """
-    Construye una función f(x) usando sympy para soportar trigonométricas
-    y otras funciones complejas de forma segura y rápida.
+    Construye una función f(x) usando sympy para soportar trigonométricas,
+    ln, e, y otras funciones complejas de forma segura y rápida.
     """
-    expr_str = expr_str.replace("^", "**")
-    # Soporte básico para e^x -> exp(x) si el usuario lo escribe así
-    expr_str = re.sub(r'e\*\*(\w+)', r'exp(\1)', expr_str)
+    # Aplicar preprocesamiento (ln->log, e->E, ^->**)
+    expr_clean = _preprocesar_para_sympy(expr_str)
     
     try:
         # Intentar parsear con sympy
         x_sym = sp.Symbol('x')
-        # sympify convierte strings a expresiones sympy (soporta sin, cos, etc.)
-        expr = sp.sympify(expr_str)
+        # sympify convierte strings a expresiones sympy
+        expr = sp.sympify(expr_clean)
         # lambdify convierte la expresión sympy a una función python nativa (usando math)
         f = sp.lambdify(x_sym, expr, modules=["math"])
         return f
     except Exception:
-        # Fallback al método anterior manual si sympy falla (raro)
+        # Fallback al método anterior manual si sympy falla
         def f_manual(x: float) -> float:
+            # En el fallback usamos evaluar_expresion de utilidad.py que ya maneja 'ln' y 'e'
+            # pero hacemos un reemplazo simple de x
             expr_num = expr_str.replace("x", f"({x})")
             return float(evaluar_expresion(expr_num, exacto=False))
         return f_manual
@@ -60,11 +79,11 @@ def _parse_funcion_sympy(expr_str: str):
     Retorna la función numérica y la expresión simbólica de Sympy.
     Útil para métodos que requieren derivadas (Newton).
     """
-    expr_str = expr_str.replace("^", "**")
-    expr_str = re.sub(r'e\*\*(\w+)', r'exp(\1)', expr_str) # e^x -> exp(x)
+    # Aplicar preprocesamiento
+    expr_clean = _preprocesar_para_sympy(expr_str)
     
     x_sym = sp.Symbol('x')
-    expr = sp.sympify(expr_str)
+    expr = sp.sympify(expr_clean)
     f = sp.lambdify(x_sym, expr, modules=["math"])
     return f, expr
 
@@ -252,7 +271,9 @@ def regla_falsa_descriptiva(
 # ======================================================
 
 def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: int) -> Dict[str, Any]:
+    # Usamos _parse_funcion_sympy que ahora soporta ln y e
     f, expr_sym = _parse_funcion_sympy(expr_str)
+    
     x_sym = sp.Symbol('x')
     df_expr = sp.diff(expr_sym, x_sym)
     df = sp.lambdify(x_sym, df_expr, modules=["math"])
@@ -263,8 +284,8 @@ def newton_raphson_descriptiva(expr_str: str, x0: float, tol: float, max_iter: i
     criterio = "max_iter"
     ea = None
 
-    # String de la derivada para el reporte
-    df_str = str(df_expr).replace("**", "^")
+    # String de la derivada para el reporte (volvemos a poner ln y e para que se vea bonito)
+    df_str = str(df_expr).replace("**", "^").replace("log", "ln").replace("E", "e")
 
     for it in range(1, max_iter + 1):
         try:
@@ -407,9 +428,7 @@ def generar_reporte_paso_a_paso(info: Dict[str, Any]) -> str:
         s_ea = fmt_number(ea, 5) if ea is not None else "---"
         
         # Sustitución visual (aproximada para referencia)
-        sub_xl = expr_visual.replace("x", f"({s_xl})")
-        sub_xu = expr_visual.replace("x", f"({s_xu})")
-        sub_xr = expr_visual.replace("x", f"({s_xr})")
+        # Nota: solo reemplazo básico para visualización
         
         txt.append(f"\nITERACIÓN {it}:")
         txt.append(f"--------------------------------------------------")
@@ -462,7 +481,7 @@ def generar_reporte_abierto(info: dict) -> str:
     
     if metodo == "Newton-Raphson":
         # Formatear la derivada también
-        derivada_vis = formatear_superindice(info['derivada_str'])
+        derivada_vis = formatear_superindice(info.get('derivada_str', ''))
         lines.append(f"Derivada analítica: f'(x) = {derivada_vis}")
         lines.append("-" * 60)
         
@@ -523,7 +542,7 @@ def regla_falsa(expr, a, b, tol, mx=50):
     return regla_falsa_descriptiva(expr, a, b, tol, mx)
 
 # ======================================================
-#  Otros Cálculos (Errores, etc.) - Sin cambios lógicos
+#  Otros Cálculos (Errores, etc.)
 # ======================================================
 def calcular_errores(valor_real: float, valor_aproximado: float) -> Dict[str, Any]:
     m, x = float(valor_real), float(valor_aproximado)
